@@ -10,6 +10,12 @@ on:
         type: choice
         default: release
         options: [release, debug]
+      release_tag:
+        description: >-
+          Tag wydania, np. v0.1.0. Pozostaw pusty, żeby dostać wyłącznie artefakt przebiegu.
+          Podany tag zostanie utworzony po stronie GitHuba na budowanym commicie.
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -80,8 +86,10 @@ jobs:
         run: |
           FILE=$(find androidApp/build/outputs/apk -name '*.apk' | head -n 1)
           test -n "$FILE" || { echo "Nie znaleziono APK"; exit 1; }
-          # Nazwa gałęzi może zawierać ukośniki, które nie nadają się do nazwy pliku.
-          VERSION="${GITHUB_REF_NAME//\//-}"
+          # Przy wydaniu nazwa pochodzi z tagu, inaczej z refa. Nazwa gałęzi może zawierać
+          # ukośniki, które nie nadają się do nazwy pliku.
+          VERSION="${{ inputs.release_tag || github.ref_name }}"
+          VERSION="${VERSION//\//-}"
           TARGET="reactivebike-${VERSION}.apk"
           cp "$FILE" "$TARGET"
           echo "file=$TARGET" >> "$GITHUB_OUTPUT"
@@ -95,18 +103,23 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # Wydanie powstaje przy pushu tagu `v*` albo gdy uruchamiając workflow ręcznie podano
+      # `release_tag`. W tym drugim wypadku `gh release create` zakłada tag samodzielnie na
+      # budowanym commicie (`--target`), więc nie trzeba go wcześniej pushować.
       - name: Utworzenie wydania GitHub
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           SIGNED: ${{ steps.signing.outputs.signed }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           if [ "$SIGNED" = "true" ]; then
             NOTE="APK podpisany kluczem wydania."
           else
-            NOTE=":warning: APK podpisany **kluczem debugowym** - nadaje sie do testow, nie do dystrybucji. Skonfiguruj sekret \`RELEASE_KEYSTORE_BASE64\`, zeby podpisywac kluczem wydania."
+            NOTE=":warning: APK podpisany **kluczem debugowym** - nadaje sie do testow, nie do dystrybucji w sklepie. Skonfiguruj sekret \`RELEASE_KEYSTORE_BASE64\`, zeby podpisywac kluczem wydania."
           fi
 
-          gh release create "$GITHUB_REF_NAME" "${{ steps.apk.outputs.file }}" \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "$TAG" "${{ steps.apk.outputs.file }}" \
+            --title "$TAG" \
+            --target "$GITHUB_SHA" \
             --notes "$NOTE"
