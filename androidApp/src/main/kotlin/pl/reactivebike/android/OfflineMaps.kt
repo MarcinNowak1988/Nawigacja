@@ -54,13 +54,13 @@ class OfflineMapDownloader(context: Context) {
                         emit(describe(status, regions.size))
                     }
 
-                    override fun onError(error: String?) {
+                    override fun onError(error: String) {
                         emit(OfflineMapsState("Pobrane regiony: ${regions.size}"))
                     }
                 })
             }
 
-            override fun onError(error: String?) {
+            override fun onError(error: String) {
                 emit(OfflineMapsState("Nie udało się odczytać pobranych map.", error))
             }
         })
@@ -88,14 +88,13 @@ class OfflineMapDownloader(context: Context) {
             definition,
             REGION_METADATA.toByteArray(),
             object : OfflineManager.CreateOfflineRegionCallback {
-                override fun onCreate(offlineRegion: OfflineRegion?) {
-                    val region = offlineRegion ?: return
-                    activeRegion = region
-                    region.setDownloadState(OfflineRegion.STATE_ACTIVE)
-                    startPolling(region)
+                override fun onCreate(offlineRegion: OfflineRegion) {
+                    activeRegion = offlineRegion
+                    offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+                    startPolling(offlineRegion)
                 }
 
-                override fun onError(error: String?) {
+                override fun onError(error: String) {
                     emit(OfflineMapsState("Nie udało się rozpocząć pobierania.", error))
                 }
             },
@@ -122,7 +121,7 @@ class OfflineMapDownloader(context: Context) {
                             if (remaining <= 0) refresh()
                         }
 
-                        override fun onError(error: String?) {
+                        override fun onError(error: String) {
                             remaining -= 1
                             if (remaining <= 0) refresh()
                         }
@@ -130,7 +129,7 @@ class OfflineMapDownloader(context: Context) {
                 }
             }
 
-            override fun onError(error: String?) {
+            override fun onError(error: String) {
                 emit(OfflineMapsState("Nie udało się usunąć map.", error))
             }
         })
@@ -157,7 +156,7 @@ class OfflineMapDownloader(context: Context) {
                         }
                     }
 
-                    override fun onError(error: String?) {
+                    override fun onError(error: String) {
                         emit(OfflineMapsState("Błąd pobierania.", error))
                         stopPolling()
                     }
