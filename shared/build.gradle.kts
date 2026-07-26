@@ -11,9 +11,6 @@ val androidSdkAvailable = rootProject.extra["androidSdkAvailable"] as Boolean
 
 if (androidSdkAvailable) {
     apply(plugin = "com.android.library")
-    // Konfiguracja rozszerzenia `android` mieszka w osobnym skrypcie, bo odwołuje się
-    // do typów AGP — bez pluginu na classpath ten plik nie dałby się skompilować.
-    apply(from = "android.gradle.kts")
 }
 
 kotlin {
@@ -40,6 +37,32 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+    }
+}
+
+if (androidSdkAvailable) {
+    // Rozszerzenie `android` konfigurujemy dynamicznie, **bez odwoływania się do typów AGP**.
+    //
+    // Plugin jest tu nakładany imperatywnie (`apply(plugin = ...)`), więc nie ma akcesora
+    // `android { }` z bloku `plugins`. Nie da się też sięgnąć po `LibraryExtension`: ten plik
+    // musi kompilować się także wtedy, gdy AGP nie ma na classpath, a wyniesienie konfiguracji
+    // do skryptu ładowanego przez `apply(from = ...)` nie działa — taki skrypt dostaje tylko
+    // część classpathu AGP (`com.android.build.gradle` widać, `com.android.build.api.dsl` już nie).
+    //
+    // `withGroovyBuilder` należy do Gradle Kotlin DSL, więc kompiluje się zawsze, a wykonuje
+    // wyłącznie w tej gałęzi — gdy plugin faktycznie jest nałożony.
+    extensions.getByName("android").withGroovyBuilder {
+        setProperty("namespace", "pl.reactivebike.shared")
+        setProperty("compileSdk", property("androidCompileSdk").toString().toInt())
+
+        "defaultConfig" {
+            setProperty("minSdk", property("androidMinSdk").toString().toInt())
+        }
+
+        "compileOptions" {
+            setProperty("sourceCompatibility", JavaVersion.VERSION_17)
+            setProperty("targetCompatibility", JavaVersion.VERSION_17)
         }
     }
 }
