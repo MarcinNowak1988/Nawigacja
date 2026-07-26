@@ -26,6 +26,7 @@ docs/                Specyfikacja techniczna i ADR-y
 shared/              Moduł Kotlin Multiplatform — wspólna logika biznesowa
   src/commonMain/    Kod platform-niezależny
   src/commonTest/    Testy uruchamiane na każdym targecie
+androidApp/          Aplikacja Android (ekran diagnostyczny, nie interfejs nawigacji)
 ```
 
 Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od platformy:
@@ -54,13 +55,42 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 Wymagany JDK 21. Gradle dostarcza wrapper, więc nie trzeba instalować go osobno.
 
 ```bash
-./gradlew build          # kompilacja i testy
+./gradlew build           # kompilacja i testy
 ./gradlew :shared:jvmTest # same testy modułu shared
 ```
 
-Moduł `shared` deklaruje na razie wyłącznie target `jvm`, dzięki czemu build przechodzi
-na dowolnej maszynie i w CI — bez Android SDK i bez Xcode. Targety `android` oraz iOS
-dojdą razem z modułami aplikacji; kod w `commonMain` nie będzie wtedy wymagał zmian.
+**Warstwa androidowa jest opcjonalna.** Moduł `androidApp` i target `android` w `shared`
+włączają się automatycznie, gdy wykryte zostanie Android SDK — po zmiennej `ANDROID_HOME`,
+`ANDROID_SDK_ROOT` albo wpisie `sdk.dir` w `local.properties`. Bez SDK budowany jest
+wyłącznie `shared` z targetem `jvm`, dzięki czemu logikę biznesową da się kompilować
+i testować bez pobierania kilku gigabajtów SDK. Wykrywanie można nadpisać:
+
+```bash
+./gradlew build -Preactivebike.android=false   # wymuś build bez warstwy androidowej
+```
+
+Targety iOS dojdą razem z modułem iOS — Kotlin/Native kompiluje je wyłącznie na macOS
+z Xcode. Kod w `commonMain` nie będzie wtedy wymagał zmian.
+
+## APK
+
+Aplikacja androidowa to na razie **ekran diagnostyczny**, nie interfejs nawigacji: pokazuje,
+że logika z modułu `shared` działa na urządzeniu. Mapy, trasowania ani UI z sekcji 3
+specyfikacji jeszcze nie ma.
+
+APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
+
+- **na żądanie** — zakładka Actions → *APK* → *Run workflow*; plik ląduje jako artefakt przebiegu,
+- **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Bez skonfigurowanego klucza APK jest podpisany **kluczem debugowym** — instaluje się
+i nadaje do testów, ale nie do dystrybucji w sklepie. Żeby podpisywać kluczem wydania,
+ustaw sekrety repozytorium: `RELEASE_KEYSTORE_BASE64` (keystore zakodowany base64),
+`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
 
 ## Stos technologiczny
 
