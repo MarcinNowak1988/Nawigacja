@@ -1,0 +1,48 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+
+# Kotlin
+.kotlin/
+*.klib
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Xcode
+xcuserdata/
+*.xcworkspace/
+!default.xcworkspace/
+DerivedData/
+*.xcuserstate
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# CocoaPods / SPM
+Pods/
+Podfile.lock
+.swiftpm/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+captures/
+.cxx/
+
+# Systemowe
+.DS_Store
+Thumbs.db
+
+# Edytory
+*.swp
+*~
+.vscode/
