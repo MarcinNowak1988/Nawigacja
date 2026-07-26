@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -15,17 +16,14 @@ import android.widget.TextView
 /**
  * Warstwa widoków pulpitu, zbudowana w kodzie.
  *
- * Moduł nie korzysta z androidx ani Compose — widoki powstają programowo, dzięki czemu
- * aplikacja nie wnosi zależności, których wersji nie dałoby się zweryfikować przed
- * pierwszym buildem. Docelowy interfejs powstanie w Jetpack Compose (sekcja 3 specyfikacji).
+ * Układ: pasek prędkości u góry, pod nim mapa, a najniżej przewijalne karty ze szczegółami.
+ * Gdy mapa jest niedostępna, karty zajmują całą wysokość — aplikacja ma działać także wtedy,
+ * gdy MapLibre nie wystartuje.
  *
  * Klasa odpowiada wyłącznie za wygląd i trzyma referencje do pól, które [MainActivity]
  * aktualizuje przy każdym odświeżeniu. Nie zawiera logiki.
  */
 class RideDashboard(private val context: Context) {
-
-    lateinit var root: ScrollView
-        private set
 
     private lateinit var speedValue: TextView
     private lateinit var speedCaption: TextView
@@ -35,75 +33,29 @@ class RideDashboard(private val context: Context) {
     lateinit var refreshButton: Button
         private set
 
-    fun build(): ScrollView {
-        val column = LinearLayout(context).apply {
+    lateinit var recenterButton: Button
+        private set
+
+    fun build(mapView: View?): View {
+        val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BACKGROUND)
-            setPadding(dp(16), dp(16), dp(16), dp(24))
         }
 
-        column.addView(speedHeader())
+        root.addView(speedHeader())
 
-        column.addView(
-            card(
-                "Pozycja",
-                listOf(KEY_COORDS, KEY_ACCURACY, KEY_ALTITUDE, KEY_FIX_AGE),
-            ),
-        )
-        column.addView(
-            card(
-                "Tryb GPS",
-                listOf(KEY_GPS_STATE, KEY_GPS_RATE, KEY_GPS_REASON),
-            ),
-        )
-        column.addView(
-            card(
-                "Ciśnienie",
-                listOf(KEY_PRESSURE, KEY_PRESSURE_TREND, KEY_STORM),
-            ),
-        )
-        column.addView(
-            card(
-                "Pogoda",
-                listOf(KEY_WEATHER, KEY_TEMPERATURE, KEY_PRECIPITATION, KEY_WIND, KEY_WEATHER_AGE),
-            ),
-        )
-        column.addView(
-            card(
-                "Wagi trasowania",
-                listOf(KEY_WEIGHTS_SOURCE, KEY_WEIGHTS_REASON, KEY_WEIGHTS_DETAIL),
-            ),
-        )
-
-        refreshButton = Button(context).apply {
-            text = "Odśwież pogodę"
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(8) }
-        }
-        column.addView(refreshButton)
-
-        column.addView(
-            TextView(context).apply {
-                text = "Wersja poglądowa — bez mapy i trasowania. " +
-                    "Pulpit pokazuje logikę z modułu wspólnego działającą na żywych czujnikach."
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTextColor(MUTED)
-                setPadding(dp(4), dp(16), dp(4), 0)
-            },
-        )
-
-        root = ScrollView(context).apply {
-            setBackgroundColor(BACKGROUND)
-            addView(
-                column,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
+        if (mapView != null) {
+            root.addView(
+                mapView,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.5f),
             )
         }
+
+        root.addView(
+            cardsScroller(),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
+        )
+
         return root
     }
 
@@ -111,9 +63,9 @@ class RideDashboard(private val context: Context) {
     fun set(key: String, value: String?) {
         val view = rows[key] ?: return
         if (value.isNullOrBlank()) {
-            view.visibility = TextView.GONE
+            view.visibility = View.GONE
         } else {
-            view.visibility = TextView.VISIBLE
+            view.visibility = View.VISIBLE
             view.text = value
         }
     }
@@ -126,42 +78,94 @@ class RideDashboard(private val context: Context) {
     // --- budowanie widoków ---
 
     private fun speedHeader(): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        background = cardBackground(ACCENT_CARD)
-        setPadding(dp(16), dp(20), dp(16), dp(20))
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(12) }
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(ACCENT)
+        setPadding(dp(18), dp(12), dp(14), dp(12))
 
         speedValue = TextView(context).apply {
             text = "—"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 56f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 40f)
             setTypeface(Typeface.DEFAULT_BOLD)
             setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER_HORIZONTAL
         }
+        addView(speedValue)
+
         speedCaption = TextView(context).apply {
             text = "km/h"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTextColor(Color.parseColor("#C7D2FE"))
-            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(10), dp(12), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        addView(speedCaption)
+
+        recenterButton = Button(context).apply {
+            text = "Wyśrodkuj"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        addView(recenterButton)
+    }
+
+    private fun cardsScroller(): ScrollView {
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(20))
         }
 
-        addView(speedValue)
-        addView(speedCaption)
+        column.addView(card("Pozycja", listOf(KEY_COORDS, KEY_ACCURACY, KEY_ALTITUDE, KEY_FIX_AGE)))
+        column.addView(card("Tryb GPS", listOf(KEY_GPS_STATE, KEY_GPS_RATE, KEY_GPS_REASON)))
+        column.addView(card("Ciśnienie", listOf(KEY_PRESSURE, KEY_PRESSURE_TREND, KEY_STORM)))
+        column.addView(
+            card("Pogoda", listOf(KEY_WEATHER, KEY_TEMPERATURE, KEY_PRECIPITATION, KEY_WIND, KEY_WEATHER_AGE)),
+        )
+        column.addView(
+            card("Wagi trasowania", listOf(KEY_WEIGHTS_SOURCE, KEY_WEIGHTS_REASON, KEY_WEIGHTS_DETAIL)),
+        )
+
+        refreshButton = Button(context).apply {
+            text = "Odśwież pogodę"
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        column.addView(refreshButton)
+
+        column.addView(
+            TextView(context).apply {
+                text = "Wersja poglądowa. Mapa i ślad przejazdu działają; wyznaczania trasy " +
+                    "i nawigacji zakrętowej jeszcze nie ma."
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextColor(MUTED)
+                setPadding(dp(4), dp(14), dp(4), 0)
+            },
+        )
+
+        return ScrollView(context).apply {
+            setBackgroundColor(BACKGROUND)
+            addView(
+                column,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
     }
 
     private fun card(title: String, keys: List<String>): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBackground(CARD)
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(14).toFloat()
+            }
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) }
+            ).apply { bottomMargin = dp(10) }
 
             addView(
                 TextView(context).apply {
@@ -177,27 +181,21 @@ class RideDashboard(private val context: Context) {
                 val row = TextView(context).apply {
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                     setTextColor(TEXT)
-                    setPadding(0, dp(6), 0, 0)
+                    setPadding(0, dp(5), 0, 0)
                     text = "—"
-                    visibility = TextView.GONE
+                    visibility = View.GONE
                 }
                 rows[key] = row
                 addView(row)
             }
         }
 
-    private fun cardBackground(color: Int) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(14).toFloat()
-    }
-
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
     companion object {
         private val BACKGROUND = Color.parseColor("#F1F5F9")
-        private val CARD = Color.WHITE
-        private val ACCENT_CARD = Color.parseColor("#1E293B")
+        private val ACCENT = Color.parseColor("#1E293B")
         private val TEXT = Color.parseColor("#0F172A")
         private val MUTED = Color.parseColor("#64748B")
 

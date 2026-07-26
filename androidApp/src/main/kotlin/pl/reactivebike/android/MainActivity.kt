@@ -54,6 +54,7 @@ import kotlin.math.sqrt
 class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     private lateinit var dashboard: RideDashboard
+    private var mapPanel: MapPanel? = null
     private lateinit var locationManager: LocationManager
     private var sensorManager: SensorManager? = null
     private var pressureSensor: Sensor? = null
@@ -98,9 +99,19 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Mapa jest opcjonalna: gdyby MapLibre nie wystartował, pulpit ma dalej działać,
+        // bo prędkość, ciśnienie i pogoda nie zależą od renderowania kafelków.
+        val panel = try {
+            MapPanel(this).also { it.onCreate(savedInstanceState) }
+        } catch (_: Throwable) {
+            null
+        }
+        mapPanel = panel
+
         dashboard = RideDashboard(this)
-        setContentView(dashboard.build())
+        setContentView(dashboard.build(panel?.view))
         dashboard.refreshButton.setOnClickListener { requestWeather(force = true) }
+        dashboard.recenterButton.setOnClickListener { mapPanel?.recenter() }
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -113,6 +124,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     override fun onStart() {
         super.onStart()
+        mapPanel?.onStart()
         screenOn = true
 
         if (hasLocationPermission()) {
@@ -130,8 +142,19 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         handler.post(ticker)
     }
 
+    override fun onResume() {
+        super.onResume()
+        mapPanel?.onResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mapPanel?.onPause()
+    }
+
     override fun onStop() {
         super.onStop()
+        mapPanel?.onStop()
         // Ekran wygaszony albo aplikacja w tle — dla maszyny stanów to warunek wejścia w SLEEP.
         screenOn = false
         handler.removeCallbacks(ticker)
@@ -139,8 +162,19 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         stopLocationUpdates()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        mapPanel?.onSaveInstanceState(outState)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        mapPanel?.onLowMemory()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        mapPanel?.onDestroy()
         network.shutdownNow()
     }
 
@@ -216,6 +250,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     override fun onLocationChanged(location: Location) {
         lastLocation = location
         lastFixAtMillis = System.currentTimeMillis()
+        mapPanel?.updatePosition(location.latitude, location.longitude)
         requestWeather(force = false)
     }
 

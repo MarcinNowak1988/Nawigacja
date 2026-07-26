@@ -3,6 +3,7 @@ kotlin = "2.4.10"
 kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
 jvmToolchain = "21"
+maplibre = "13.4.1"
 
 # Wersje warstwy androidowej (AGP, poziomy SDK) mieszkają w gradle.properties —
 # są potrzebne tam, gdzie katalog wersji nie jest jeszcze dostępny.
@@ -11,6 +12,7 @@ jvmToolchain = "21"
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+maplibre-android-sdk = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
