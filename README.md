@@ -1,5 +1,7 @@
 # ReactiveBike
 
+[![Build](https://github.com/MarcinNowak1988/Nawigacja/actions/workflows/build.yml/badge.svg)](https://github.com/MarcinNowak1988/Nawigacja/actions/workflows/build.yml)
+
 Nawigacja rowerowa w modelu **offline-first**, projektowana z założeniem, że w lesie
 i w górach aplikacja ma działać tak samo dobrze jak w mieście z pełnym zasięgiem.
 
@@ -26,14 +28,26 @@ shared/              Moduł Kotlin Multiplatform — wspólna logika biznesowa
   src/commonTest/    Testy uruchamiane na każdym targecie
 ```
 
-Moduł `shared` zawiera dziś trzy elementy logiki, w całości niezależne od platformy:
+Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od platformy:
 
-- **model kosztu krawędzi** (`routing`) — wzór z sekcji 5.1 specyfikacji wraz z semantyką
-  wag i normalizacją do postaci wyłącznie podwyższającej,
-- **kontrakt i walidator odpowiedzi modułu AI** (`weather`) — ścisła walidacja z fallbackiem
-  na wagi domyślne, żeby błąd modelu nie przerywał nawigacji,
-- **maszyna stanów GPS** (`gps`) — czysta funkcja przejścia sterująca częstotliwością
-  odpytywania GPS.
+**`routing`**
+
+- **model kosztu krawędzi** — wzór z sekcji 5.1 specyfikacji wraz z semantyką wag
+  i normalizacją do postaci wyłącznie podwyższającej,
+- **port `RouteEngine`** — granica, przez którą warstwa natywna wstrzykuje swój silnik
+  trasowania ([ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md)).
+
+**`weather`**
+
+- **kontrakt i walidator odpowiedzi modułu AI** — ścisła walidacja z fallbackiem na wagi
+  domyślne, żeby błąd modelu nie przerywał nawigacji,
+- **polityka bufora pogodowego** — ważność liczona od momentu wydania prognozy,
+- **detektor burzy** — spadek ciśnienia z barometru, nasłuchiwany równolegle z buforem
+  ([ADR-0005](docs/adr/0005-barometr-nasluchiwany-rownolegle.md)).
+
+**`gps`**
+
+- **maszyna stanów GPS** — czysta funkcja przejścia sterująca częstotliwością odpytywania GPS.
 
 ## Budowanie i testy
 

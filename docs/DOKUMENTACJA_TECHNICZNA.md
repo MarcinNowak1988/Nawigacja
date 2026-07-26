@@ -1,7 +1,7 @@
 # ReactiveBike — Dokumentacja Techniczna Systemu
 **Nawigacja Rowerowa Offline-First**
 
-- **Wersja dokumentu:** 1.1
+- **Wersja dokumentu:** 1.2
 - **Data:** 26 lipca 2026
 - **Status:** Specyfikacja systemu (draft)
 - **Zakres:** Architektura, logika trasowania, moduł AI, zarządzanie baterią, tryb offline, prywatność
@@ -9,6 +9,10 @@
 > **Zmiany w wersji 1.1.** Weryfikacja założeń wobec dokumentacji bibliotek wykazała trzy
 > rozbieżności, skorygowane w sekcjach 3–5, 7 i 8. Uzasadnienia zapisano jako
 > [ADR-y](adr/README.md); miejsca korekt są w tekście oznaczone odsyłaczami.
+>
+> **Zmiany w wersji 1.2.** Doprecyzowano sekcję 8: ważność bufora pogodowego liczona jest
+> od wydania prognozy, a barometr nasłuchiwany jest równolegle z buforem, nie po jego
+> wygaśnięciu ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)).
 
 ---
 
@@ -264,19 +268,38 @@ Gdy urządzenie traci zasięg sieci komórkowej, system przechodzi przez zdefini
 
 ```mermaid
 flowchart TD
-    A[Utrata zasięgu sieci] --> B[Zbuforowane mapy wektorowe + lokalny GraphHopper]
-    B --> C[Zbuforowana prognoza pogody]
-    C --> D{Bufor pogodowy wciąż ważny?}
-    D -- Tak, mniej niż 2h --> C
-    D -- Nie, bufor wygasł --> E[Nasłuch natywnego barometru]
-    E --> F{Spadek ciśnienia powyżej 2 hPa?}
+    A[Utrata zasięgu sieci] --> B[Zbuforowane mapy wektorowe + lokalny silnik trasowania]
+    A --> E[Nasłuch natywnego barometru]
+
+    B --> D{Bufor pogodowy wciąż ważny?}
+    D -- "Tak, prognoza młodsza niż 2h" --> C[Wagi ze zbuforowanej prognozy]
+    D -- "Nie, prognoza wygasła" --> H[Wagi domyślne]
+
+    E --> F{"Spadek ciśnienia powyżej 2 hPa w oknie 3h?"}
     F -- Nie --> E
     F -- Tak --> G[Aktywacja Storm Mode]
+
+    G -.->|ma pierwszeństwo przed| C
+    G -.->|ma pierwszeństwo przed| H
 ```
 
 1. **Mapa i trasowanie** — aplikacja korzysta wyłącznie ze zbuforowanych map wektorowych (`.mbtiles`) oraz lokalnej instancji silnika trasowania — brak przerwy w nawigacji. MapLibre obsługuje pliki `.mbtiles` przez schemat `mbtiles://`, ale **jedno źródło w stylu mapy obsługuje dokładnie jeden plik**, a na Androidzie pliku nie można wskazać w `assets/` — musi zostać skopiowany do pamięci wewnętrznej. Konsekwencje dla pobierania wielu regionów opisuje [ADR-0003](adr/0003-offline-mbtiles.md).
-2. **Pogoda (do 2h)** — zamiast zapytań do API wykorzystywana jest ostatnia zbuforowana prognoza pogody, ważna przez 2 godziny od utraty sieci.
-3. **Po wygaśnięciu bufora — Storm Mode** — aplikacja nasłuchuje natywnego barometru urządzenia. Gwałtowny spadek ciśnienia (> 2 hPa) aktywuje tryb ucieczki przed burzą, który — zgodnie z logiką z sekcji 5 — podnosi wagi odstraszające dla otwartego terenu i nawierzchni podatnych na rozmoknięcie.
+2. **Pogoda (do 2h)** — zamiast zapytań do API wykorzystywana jest ostatnia zbuforowana prognoza pogody. **Ważność liczy się od momentu wydania prognozy, nie od utraty zasięgu** — inaczej prognoza sprzed pięciu godzin dostawałaby świeży dwugodzinny kredyt zaufania w chwili wjazdu w las. Buforowane są wagi, a nie surowe dane pogodowe: model AI tłumaczący pogodę na wagi też jest usługą sieciową, więc offline niedostępne są oba.
+3. **Storm Mode — nasłuch równoległy, nie następczy** — barometr jest nasłuchiwany **od chwili utraty zasięgu**, równolegle z korzystaniem z bufora, a nie dopiero po jego wygaśnięciu ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)). Gwałtowny spadek ciśnienia (> 2 hPa w oknie 3 godzin) aktywuje tryb ucieczki przed burzą, który — zgodnie z logiką z sekcji 5 — podnosi wagi odstraszające dla nawierzchni podatnych na rozmoknięcie.
+
+### 8.1 Pierwszeństwo źródeł wag
+
+Bieżący pomiar z barometru ma pierwszeństwo przed prognozą sprzed godzin:
+
+| Priorytet | Warunek | Obowiązujące wagi |
+|---|---|---|
+| 1 | Barometr zgłasza spadek > 2 hPa w oknie 3 h | Wagi Storm Mode |
+| 2 | Bufor pogodowy ważny (prognoza młodsza niż 2 h) | Wagi ze zbuforowanej prognozy |
+| 3 | Pozostałe przypadki | Wagi domyślne — nawigacja bez adaptacji do pogody |
+
+Okno 3 godzin nie pochodzi ze specyfikacji, która podaje sam próg `> 2 hPa`. Bez okna czasowego próg nic nie znaczy: 2 hPa na dobę to zwykła zmiana pogody, a 2 hPa na godzinę to front. Przyjęto konwencję meteorologiczną, w której szybki spadek ciśnienia definiuje się jako 2 hPa na 3 godziny. Próg i okno są konfigurowalne i wymagają weryfikacji na realnych przejazdach.
+
+Logika obu mechanizmów jest zaimplementowana jako czyste funkcje w `shared/src/commonMain/kotlin/pl/reactivebike/weather/` (`WeatherCachePolicy`, `StormDetector`, `OfflineWeatherPolicy`) — bez zegara i bez dostępu do sprzętu, więc w pełni pokryta testami.
 
 ## 9. Prywatność i Bezpieczeństwo Danych
 
@@ -316,6 +339,9 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 | Strategia walidacji odpowiedzi modelu AI | Sekcja 6.4 — ścisła walidacja z normalizacją wag, pokryta testami |
 | Zachowanie przy błędzie/timeoucie zapytania do modelu AI | Sekcja 6.4 — fallback na wagi domyślne, nawigacja jedzie dalej |
 | Utrzymanie i wersjonowanie dokumentu | Decyzje architektoniczne trafiają do [ADR-ów](adr/README.md); dokument dostaje odsyłacze zamiast przepisywania historii |
+| Moment, od którego liczy się ważność bufora pogodowego | Sekcja 8 — od wydania prognozy, nie od utraty zasięgu |
+| Kolejność nasłuchu barometru względem bufora | Sekcja 8.1 — równolegle, z pierwszeństwem dla bieżącego pomiaru ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)) |
+| Okno czasowe dla progu spadku ciśnienia | Sekcja 8.1 — 3 godziny, konfigurowalne, do weryfikacji na realnych przejazdach |
 
 ### 11.2 Wciąż otwarte
 
@@ -323,6 +349,8 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 - **Pomiar kosztu speedupu Landmarks.** Jeśli wyznaczanie trasy bez LM okaże się dostatecznie szybkie na realnych dystansach rowerowych, ograniczenie z [ADR-0002](adr/0002-model-wag-tylko-podwyzszajacy.md) można znieść, a model wag uprościć.
 - **Proces aktualizacji lokalnych map `.mbtiles`** — częstotliwość, rozmiar pobrań, wersjonowanie danych OSM. [ADR-0003](adr/0003-offline-mbtiles.md) ustala podział „jeden region = jeden plik", ale nie opisuje cyklu aktualizacji.
 - **Próg czułości akcelerometru** dla wykrywania bezruchu ([ADR-0004](adr/0004-warunek-wejscia-w-stan-stationary.md)) — do ustalenia przy implementacji natywnej, wraz z zachowaniem przy roweru stojącym na wietrze.
+- **Dostrojenie wag Storm Mode** — obecne wartości w `StormMode.weights` są punktem wyjścia przyjętym z rozsądku, nie wynikiem pomiarów. Wymagają weryfikacji na realnych przejazdach w deszczu.
+- **Unikanie otwartego terenu w Storm Mode.** Sekcja 8 wymienia je obok nawierzchni podatnych na rozmoknięcie, ale model krawędzi nie niesie informacji o ekspozycji terenu — potrzebne byłyby dane o pokryciu terenu spoza tagów nawierzchni.
 - **Zakres danych przesyłanych do usług zewnętrznych** (sekcja 9.2) — nierozstrzygnięty.
 - **Testy porównawcze tras** między platformami, gdy powstanie drugi silnik trasowania — konsekwencja [ADR-0001](adr/0001-silnik-trasowania-per-platforma.md).
 
