@@ -20,6 +20,10 @@ import android.widget.TextView
  * Gdy mapa jest niedostępna, karty zajmują całą wysokość — aplikacja ma działać także wtedy,
  * gdy MapLibre nie wystartuje.
  *
+ * Widoki powstają w kodzie, bez androidx i bez Compose. Same biblioteki androidx są już
+ * w projekcie, ale wyłącznie tranzytywnie przez MapLibre — nie sięgamy po nie wprost.
+ * Docelowy interfejs powstanie w Jetpack Compose (sekcja 3 specyfikacji).
+ *
  * Klasa odpowiada wyłącznie za wygląd i trzyma referencje do pól, które [MainActivity]
  * aktualizuje przy każdym odświeżeniu. Nie zawiera logiki.
  */
