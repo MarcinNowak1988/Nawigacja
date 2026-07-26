@@ -19,8 +19,8 @@ android {
         applicationId = "pl.reactivebike"
         minSdk = property("androidMinSdk").toString().toInt()
         targetSdk = property("androidTargetSdk").toString().toInt()
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
     }
 
     // Podpisywanie wydania kluczem z sekretów CI, gdy są dostępne.
@@ -50,6 +50,21 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+        }
+    }
+
+    // Biblioteki natywne MapLibre to ok. 46 MB na cztery architektury, przy 8 MB reszty
+    // aplikacji. Każde urządzenie potrzebuje dokładnie jednej, więc budujemy osobny APK
+    // per architektura — arm64-v8a schodzi wtedy do ok. 20 MB zamiast 51 MB.
+    //
+    // Wariant uniwersalny zostaje celowo: APK rozprowadzamy przez wydania GitHuba, gdzie
+    // pobierający nie powinien musieć wiedzieć, jaką architekturę ma jego telefon.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
         }
     }
 
