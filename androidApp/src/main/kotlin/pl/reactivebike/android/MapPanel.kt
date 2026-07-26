@@ -34,6 +34,10 @@ class MapPanel(context: Context) {
     private var styleReady = false
     private var triedFallbackStyle = false
 
+    /** Styl faktycznie wczytany — potrzebny przy pobieraniu regionu offline. */
+    var activeStyleUrl: String = PRIMARY_STYLE
+        private set
+
     private val track = mutableListOf<Point>()
     private var followPosition = true
 
@@ -67,12 +71,17 @@ class MapPanel(context: Context) {
     }
 
     private fun loadStyle(target: MapLibreMap, styleUrl: String) {
+        activeStyleUrl = styleUrl
         target.setStyle(styleUrl) { style ->
             styleReady = true
             addLayers(style)
             redraw(style)
         }
     }
+
+    /** Granice widocznego fragmentu mapy — obszar, który obejmie pobranie offline. */
+    fun visibleBounds(): org.maplibre.android.geometry.LatLngBounds? =
+        map?.projection?.visibleRegion?.latLngBounds
 
     private fun addLayers(style: Style) {
         if (style.getSource(SOURCE_TRACK) == null) {

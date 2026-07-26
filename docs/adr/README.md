@@ -30,6 +30,7 @@ powstaje nowy ADR, a stary dostaje status `Zastąpiony przez ADR-NNNN`.
 |---|---|---|
 | [0001](0001-silnik-trasowania-per-platforma.md) | Silnik trasowania jest kodem per-platforma, nie wspólnym | Zaakceptowany |
 | [0002](0002-model-wag-tylko-podwyzszajacy.md) | Model wag wyłącznie podwyższający | Zaakceptowany |
-| [0003](0003-offline-mbtiles.md) | Mapy offline na plikach `.mbtiles` | Zaakceptowany |
+| [0003](0003-offline-mbtiles.md) | Mapy offline na plikach `.mbtiles` | Zaakceptowany, doprecyzowany przez ADR-0006 |
 | [0004](0004-warunek-wejscia-w-stan-stationary.md) | Wejście w stan STATIONARY wymaga potwierdzenia z akcelerometru | Zaakceptowany |
 | [0005](0005-barometr-nasluchiwany-rownolegle.md) | Barometr nasłuchiwany równolegle z buforem pogodowym | Zaakceptowany |
+| [0006](0006-mapy-offline-przez-offlinemanager.md) | Mapy offline przez OfflineManager zamiast ręcznego `.mbtiles` | Zaakceptowany |

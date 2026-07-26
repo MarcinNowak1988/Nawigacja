@@ -55,6 +55,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     private lateinit var dashboard: RideDashboard
     private var mapPanel: MapPanel? = null
+    private var offlineMaps: OfflineMapDownloader? = null
     private lateinit var locationManager: LocationManager
     private var sensorManager: SensorManager? = null
     private var pressureSensor: Sensor? = null
@@ -112,6 +113,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         setContentView(dashboard.build(panel?.view))
         dashboard.refreshButton.setOnClickListener { requestWeather(force = true) }
         dashboard.recenterButton.setOnClickListener { mapPanel?.recenter() }
+
+        setUpOfflineMaps(panel)
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -174,6 +177,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        offlineMaps?.stop()
         mapPanel?.onDestroy()
         network.shutdownNow()
     }
@@ -196,6 +200,46 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             ).show()
         }
         render()
+    }
+
+    // --- mapy offline ---
+
+    private fun setUpOfflineMaps(panel: MapPanel?) {
+        if (panel == null) {
+            dashboard.set(RideDashboard.KEY_OFFLINE_STATUS, "Mapa niedostępna — pobieranie wyłączone.")
+            dashboard.offlineDownloadButton.isEnabled = false
+            dashboard.offlineDeleteButton.isEnabled = false
+            return
+        }
+
+        val downloader = try {
+            OfflineMapDownloader(this)
+        } catch (_: Throwable) {
+            dashboard.set(RideDashboard.KEY_OFFLINE_STATUS, "Pobieranie map niedostępne.")
+            dashboard.offlineDownloadButton.isEnabled = false
+            dashboard.offlineDeleteButton.isEnabled = false
+            return
+        }
+        offlineMaps = downloader
+
+        downloader.observe { state ->
+            dashboard.set(RideDashboard.KEY_OFFLINE_STATUS, state.summary)
+            dashboard.set(RideDashboard.KEY_OFFLINE_DETAIL, state.detail)
+            dashboard.offlineDownloadButton.isEnabled = !state.busy
+            dashboard.offlineDeleteButton.isEnabled = !state.busy
+        }
+
+        dashboard.offlineDownloadButton.setOnClickListener {
+            val bounds = panel.visibleBounds()
+            if (bounds == null) {
+                Toast.makeText(this, "Mapa jeszcze się nie wczytała.", Toast.LENGTH_SHORT).show()
+            } else {
+                downloader.download(panel.activeStyleUrl, bounds)
+            }
+        }
+        dashboard.offlineDeleteButton.setOnClickListener { downloader.deleteAll() }
+
+        downloader.refresh()
     }
 
     // --- lokalizacja ---

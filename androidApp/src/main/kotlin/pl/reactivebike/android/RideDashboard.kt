@@ -40,6 +40,12 @@ class RideDashboard(private val context: Context) {
     lateinit var recenterButton: Button
         private set
 
+    lateinit var offlineDownloadButton: Button
+        private set
+
+    lateinit var offlineDeleteButton: Button
+        private set
+
     fun build(mapView: View?): View {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -117,6 +123,7 @@ class RideDashboard(private val context: Context) {
             setPadding(dp(14), dp(14), dp(14), dp(20))
         }
 
+        column.addView(offlineCard())
         column.addView(card("Pozycja", listOf(KEY_COORDS, KEY_ACCURACY, KEY_ALTITUDE, KEY_FIX_AGE)))
         column.addView(card("Tryb GPS", listOf(KEY_GPS_STATE, KEY_GPS_RATE, KEY_GPS_REASON)))
         column.addView(card("Ciśnienie", listOf(KEY_PRESSURE, KEY_PRESSURE_TREND, KEY_STORM)))
@@ -156,6 +163,32 @@ class RideDashboard(private val context: Context) {
                 ),
             )
         }
+    }
+
+    /** Karta map offline — jako jedyna zawiera akcje, bo pobieranie jest czynnością użytkownika. */
+    private fun offlineCard(): LinearLayout {
+        val container = card("Mapa offline", listOf(KEY_OFFLINE_STATUS, KEY_OFFLINE_DETAIL))
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        offlineDownloadButton = Button(context).apply {
+            text = "Pobierz widoczny obszar"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        offlineDeleteButton = Button(context).apply {
+            text = "Usuń"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+
+        actions.addView(offlineDownloadButton)
+        actions.addView(offlineDeleteButton)
+        container.addView(actions)
+
+        return container
     }
 
     private fun card(title: String, keys: List<String>): LinearLayout =
@@ -221,6 +254,9 @@ class RideDashboard(private val context: Context) {
         const val KEY_PRECIPITATION = "precipitation"
         const val KEY_WIND = "wind"
         const val KEY_WEATHER_AGE = "weatherAge"
+
+        const val KEY_OFFLINE_STATUS = "offlineStatus"
+        const val KEY_OFFLINE_DETAIL = "offlineDetail"
 
         const val KEY_WEIGHTS_SOURCE = "weightsSource"
         const val KEY_WEIGHTS_REASON = "weightsReason"
