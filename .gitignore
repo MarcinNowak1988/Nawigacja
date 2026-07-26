@@ -38,6 +38,12 @@ Podfile.lock
 captures/
 .cxx/
 
+# Klucze podpisujące — nigdy nie trafiają do repozytorium
+*.keystore
+*.jks
+*.keystore.b64
+keystore.properties
+
 # Systemowe
 .DS_Store
 Thumbs.db

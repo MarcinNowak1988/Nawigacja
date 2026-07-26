@@ -87,10 +87,45 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Bez skonfigurowanego klucza APK jest podpisany **kluczem debugowym** — instaluje się
-i nadaje do testów, ale nie do dystrybucji w sklepie. Żeby podpisywać kluczem wydania,
-ustaw sekrety repozytorium: `RELEASE_KEYSTORE_BASE64` (keystore zakodowany base64),
-`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
+Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**
+pasuje do praktycznie każdego telefonu z ostatnich lat i jest najmniejszy (~16 MB wobec
+~52 MB wariantu uniwersalnego). Jeśli nie masz pewności co do architektury — weź
+`universal`.
+
+## Podpisywanie wydań
+
+> **Bez tej konfiguracji kolejnych wydań nie da się instalować na wierzch poprzednich.**
+
+Gdy sekrety podpisywania nie są ustawione, `assembleRelease` podpisuje APK kluczem
+debugowym z `~/.android/debug.keystore`. Runner GitHub Actions to za każdym razem świeża
+maszyna, a cache obejmuje `~/.gradle`, nie `~/.android` — więc **każde wydanie dostaje
+inny klucz**. Android odmawia wtedy aktualizacji z błędem `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
+i trzeba odinstalować aplikację przed każdą nową wersją.
+
+Żeby to naprawić, wystarczy jednorazowo wygenerować klucz i wgrać go do sekretów:
+
+```bash
+keytool -genkeypair -v \
+  -keystore reactivebike.keystore \
+  -alias reactivebike \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=ReactiveBike, O=ReactiveBike, C=PL"
+
+base64 -w0 reactivebike.keystore > reactivebike.keystore.b64
+```
+
+Następnie w repozytorium — *Settings → Secrets and variables → Actions* — dodaj cztery sekrety:
+
+| Sekret | Wartość |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | zawartość pliku `reactivebike.keystore.b64` |
+| `RELEASE_KEYSTORE_PASSWORD` | hasło podane przy `keytool` |
+| `RELEASE_KEY_ALIAS` | `reactivebike` |
+| `RELEASE_KEY_PASSWORD` | hasło klucza (przy powyższym poleceniu to samo co hasło keystore) |
+
+**Pliku `.keystore` nigdy nie commituj** — `.gitignore` już go blokuje. Zgubienie tego
+klucza oznacza, że kolejnych wydań nie da się zainstalować jako aktualizacji, więc
+zrób jego kopię poza repozytorium.
 
 ## Stos technologiczny
 
