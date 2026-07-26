@@ -54,7 +54,9 @@ class OfflineMapDownloader(context: Context) {
                         emit(describe(status, regions.size))
                     }
 
-                    override fun onError(error: String) {
+                    // Uwaga: w OfflineRegionStatusCallback `error` jest nullowalny,
+                    // inaczej niż w pozostałych callbackach MapLibre.
+                    override fun onError(error: String?) {
                         emit(OfflineMapsState("Pobrane regiony: ${regions.size}"))
                     }
                 })
@@ -156,7 +158,8 @@ class OfflineMapDownloader(context: Context) {
                         }
                     }
 
-                    override fun onError(error: String) {
+                    // Jak wyżej — ten jeden interfejs ma nullowalny parametr błędu.
+                    override fun onError(error: String?) {
                         emit(OfflineMapsState("Błąd pobierania.", error))
                         stopPolling()
                     }
