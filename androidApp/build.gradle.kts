@@ -19,8 +19,8 @@ android {
         applicationId = "pl.reactivebike"
         minSdk = property("androidMinSdk").toString().toInt()
         targetSdk = property("androidTargetSdk").toString().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // Podpisywanie wydania kluczem z sekretów CI, gdy są dostępne.
