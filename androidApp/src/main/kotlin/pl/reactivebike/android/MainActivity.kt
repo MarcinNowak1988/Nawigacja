@@ -102,9 +102,14 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
         // Mapa jest opcjonalna: gdyby MapLibre nie wystartował, pulpit ma dalej działać,
         // bo prędkość, ciśnienie i pogoda nie zależą od renderowania kafelków.
+        //
+        // Powód awarii pokazujemy na ekranie zamiast go połykać — cicha degradacja
+        // wygląda dla użytkownika identycznie jak zepsuta aplikacja.
+        var mapError: String? = null
         val panel = try {
             MapPanel(this).also { it.onCreate(savedInstanceState) }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            mapError = t.message?.takeIf { it.isNotBlank() } ?: t::class.java.simpleName
             null
         }
         mapPanel = panel
@@ -114,7 +119,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.refreshButton.setOnClickListener { requestWeather(force = true) }
         dashboard.recenterButton.setOnClickListener { mapPanel?.recenter() }
 
-        setUpOfflineMaps(panel)
+        setUpOfflineMaps(panel, mapError)
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -131,6 +136,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         screenOn = true
 
         if (hasLocationPermission()) {
+            seedMapWithLastKnownLocation()
             applyLocationUpdates()
         } else {
             requestPermissions(
@@ -191,6 +197,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         if (requestCode != REQUEST_LOCATION) return
 
         if (hasLocationPermission()) {
+            seedMapWithLastKnownLocation()
             applyLocationUpdates()
         } else {
             Toast.makeText(
@@ -202,11 +209,41 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         render()
     }
 
+    /**
+     * Ustawia mapę na ostatniej znanej pozycji z systemu, zanim przyjdzie pierwszy fix.
+     *
+     * Bez tego mapa otwiera się na widoku całego kraju i nie da się sensownie wskazać
+     * obszaru do pobrania offline, dopóki GPS nie złapie sygnału — a w budynku może
+     * nie złapać wcale.
+     */
+    private fun seedMapWithLastKnownLocation() {
+        val panel = mapPanel ?: return
+        if (!hasLocationPermission()) return
+
+        val known = try {
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                .asSequence()
+                .filter { locationManager.isProviderEnabled(it) }
+                .mapNotNull { locationManager.getLastKnownLocation(it) }
+                .maxByOrNull { it.time }
+        } catch (_: SecurityException) {
+            null
+        } ?: return
+
+        panel.setInitialPosition(known.latitude, known.longitude)
+        if (lastLocation == null) {
+            lastLocation = known
+            lastFixAtMillis = known.time
+            requestWeather(force = false)
+        }
+    }
+
     // --- mapy offline ---
 
-    private fun setUpOfflineMaps(panel: MapPanel?) {
+    private fun setUpOfflineMaps(panel: MapPanel?, mapError: String?) {
         if (panel == null) {
-            dashboard.set(RideDashboard.KEY_OFFLINE_STATUS, "Mapa niedostępna — pobieranie wyłączone.")
+            dashboard.set(RideDashboard.KEY_OFFLINE_STATUS, "Mapa się nie uruchomiła — pobieranie wyłączone.")
+            dashboard.set(RideDashboard.KEY_OFFLINE_DETAIL, mapError?.let { "Powód: $it" })
             dashboard.offlineDownloadButton.isEnabled = false
             dashboard.offlineDeleteButton.isEnabled = false
             return

@@ -28,7 +28,16 @@ import org.maplibre.geojson.Point
  */
 class MapPanel(context: Context) {
 
-    val view: MapView = MapView(context)
+    // Kolejność ma znaczenie: MapLibre trzeba zainicjalizować **przed** utworzeniem
+    // MapView, inaczej konstruktor widoku rzuca wyjątkiem. Inicjalizatory pól wykonują
+    // się przed blokiem `init`, więc `view` musi być przypisane wewnątrz `init`, po
+    // wywołaniu `getInstance` — nie w deklaracji pola.
+    val view: MapView
+
+    init {
+        MapLibre.getInstance(context)
+        view = MapView(context)
+    }
 
     private var map: MapLibreMap? = null
     private var styleReady = false
@@ -41,8 +50,20 @@ class MapPanel(context: Context) {
     private val track = mutableListOf<Point>()
     private var followPosition = true
 
-    init {
-        MapLibre.getInstance(context)
+    /** Pozycja, na którą ustawiamy kamerę, zanim mapa się wczyta — np. ostatnia znana z systemu. */
+    private var pendingCamera: LatLng? = null
+    private var pendingZoom: Double = DEFAULT_ZOOM
+
+    /**
+     * Ustawia punkt startowy kamery przed pierwszym fixem GPS.
+     *
+     * Wywoływane z ostatnią znaną pozycją z systemu, jeśli taka jest — dzięki temu mapa
+     * otwiera się tam, gdzie użytkownik faktycznie jest, a nie na domyślnym widoku.
+     */
+    fun setInitialPosition(latitude: Double, longitude: Double) {
+        pendingCamera = LatLng(latitude, longitude)
+        pendingZoom = ZOOM
+        map?.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(latitude, longitude), ZOOM))
     }
 
     fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +79,11 @@ class MapPanel(context: Context) {
                     followPosition = false
                 }
             }
+            // Bez tego kamera stoi na (0, 0) w powiększeniu 0 aż do pierwszego fixu GPS —
+            // użytkownik widzi środek Atlantyku i nie ma czego wybrać do pobrania.
+            ready.moveCamera(
+                CameraUpdateFactory.newLatLngZoom(pendingCamera ?: DEFAULT_CAMERA, pendingZoom),
+            )
             loadStyle(ready, PRIMARY_STYLE)
         }
 
@@ -173,6 +199,11 @@ class MapPanel(context: Context) {
         const val LAYER_TRACK = "rb-track-layer"
 
         const val ZOOM = 15.0
+
+        /** Widok startowy, gdy nie znamy jeszcze żadnej pozycji — środek Polski. */
+        val DEFAULT_CAMERA = LatLng(52.0, 19.4)
+        const val DEFAULT_ZOOM = 5.5
+
         const val MAX_TRACK_POINTS = 2_000
 
         val POSITION_COLOR = Color.parseColor("#2563EB")
