@@ -1,8 +1,12 @@
 // Moduł dołączany wyłącznie wtedy, gdy Android SDK jest dostępne (settings.gradle.kts).
-// AGP jest wtedy na classpath korzenia, więc plugin wskazujemy bez wersji.
+//
+// Oba pluginy wskazujemy **bez wersji**. AGP trafia na classpath korzenia przez warunkowy
+// blok `buildscript`, a plugin Kotlina przez `plugins { ... apply false }` w korzeniu.
+// Podanie wersji tutaj kończy się błędem „plugin is already on the classpath with an
+// unknown version" — Gradle nie ma jak sprawdzić zgodności z tym, co już zostało załadowane.
 plugins {
     id("com.android.application")
-    alias(libs.plugins.kotlin.android)
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
