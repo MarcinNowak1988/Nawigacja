@@ -109,10 +109,6 @@ kotlin {
 dependencies {
     implementation(project(":shared"))
 
-    // Silnik trasowania rowerowego na urządzeniu (ADR-0009). Biblioteka Javy na licencji
-    // MIT; brouter-core ciągnie za sobą mapaccess, util, expressions i codec.
-    implementation(libs.brouter.core)
-
     implementation(libs.maplibre.android.sdk)
     implementation(libs.kotlinx.coroutines.android)
 }

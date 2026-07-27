@@ -1,5 +1,4 @@
 [versions]
-brouter = "v1.7.10"
 kotlin = "2.4.10"
 kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
@@ -10,7 +9,6 @@ maplibre = "13.4.1"
 # są potrzebne tam, gdzie katalog wersji nie jest jeszcze dostępny.
 
 [libraries]
-brouter-core = { module = "com.github.abrensch.brouter:brouter-core", version.ref = "brouter" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }

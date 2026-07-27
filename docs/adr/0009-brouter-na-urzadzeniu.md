@@ -65,9 +65,13 @@ Ustalenia, które zebraliśmy przed decyzją:
   na dysku — praca porównywalna z zapisywaniem regionów mapy.
 - **Zależność budowana przez JitPack** to usługa pośrednicząca, której dostępność jest
   kolejnym punktem awarii buildu. Wariant zapasowy: BRouter jako podmoduł git.
-- **Dostępności artefaktu nie dało się potwierdzić przed wdrożeniem.** Środowisko, w którym
-  powstaje ten kod, nie ma dostępu do JitPack, więc pierwszy commit z zależnością jest
-  **świadomym eksperymentem rozstrzyganym przez CI**, a nie krokiem pewnym.
+- **JitPack odpadł — sprawdzone w CI.** Trzy przebiegi ustaliły, że JitPack jest osiągalny
+  z runnera, ale nie wystawia artefaktu `com.github.abrensch.brouter:brouter-core`, ani pod
+  wersją `1.7.10`, ani pod nazwą taga `v1.7.10`. Przyczyny nie da się zdiagnozować z tego
+  środowiska, bo JitPack jest tu zablokowany. Zależność została wycofana, żeby nie trzymać
+  zepsutego builda, a **drogą docelową jest podmoduł git**: źródła BRoutera kompilowane przez
+  nasz własny moduł Gradle, z pominięciem ich `buildSrc` (checkstyle, pmd, konwencje wersji).
+  To usuwa pośrednika i czyni build powtarzalnym.
 
 ## Rozważane alternatywy
 
