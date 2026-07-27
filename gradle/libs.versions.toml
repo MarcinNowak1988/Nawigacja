@@ -1,5 +1,5 @@
 [versions]
-brouter = "1.7.10"
+brouter = "v1.7.10"
 kotlin = "2.4.10"
 kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
