@@ -14,6 +14,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import pl.reactivebike.gps.GpsState
 import pl.reactivebike.gps.GpsStateMachine
@@ -25,6 +26,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import pl.reactivebike.routing.EdgeWeight
 import pl.reactivebike.routing.GeoPoint
+import pl.reactivebike.routing.ManeuverAnnouncer
+import pl.reactivebike.routing.OffRouteDetector
 import pl.reactivebike.routing.Route
 import pl.reactivebike.routing.RouteFailure
 import pl.reactivebike.routing.RouteProgress
@@ -43,6 +46,7 @@ import pl.reactivebike.weather.WeatherWeightsSource
 import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -111,6 +115,12 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var routeStatus: String? = null
     private var routeRequestInFlight = false
 
+    private val announcer = ManeuverAnnouncer()
+    private val offRouteDetector = OffRouteDetector()
+    private var textToSpeech: TextToSpeech? = null
+    private var voiceReady = false
+    private var voiceEnabled = true
+
     private val stormDetector = StormDetector()
     private val offlinePolicy = OfflineWeatherPolicy()
 
@@ -148,6 +158,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
         panel?.onDestinationPicked = { lat, lon -> requestRoute(GeoPoint(lat, lon)) }
         dashboard.clearRouteButton.setOnClickListener { clearRoute() }
+        dashboard.voiceButton.setOnClickListener { toggleVoice() }
+
+        setUpVoice()
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -211,6 +224,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
         scope.cancel()
         offlineMaps?.stop()
         mapPanel?.onDestroy()
@@ -321,6 +336,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         if (routeRequestInFlight) return
 
         destination = target
+        announcer.reset()
+        offRouteDetector.reset()
         routeRequestInFlight = true
         routeStatus = "Wyznaczam trasę…"
         mapPanel?.showRoute(emptyList(), target)
@@ -357,6 +374,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         currentRoute = null
         routeProgress = null
         routeStatus = null
+        announcer.reset()
+        offRouteDetector.reset()
         mapPanel?.clearRoute()
         render()
     }
@@ -405,6 +424,50 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private fun formatDuration(seconds: Long): String {
         val minutes = (seconds + 30) / 60
         return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
+    }
+
+
+    // --- prowadzenie ---
+
+    private fun setUpVoice() {
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status != TextToSpeech.SUCCESS) return@TextToSpeech
+            val result = textToSpeech?.setLanguage(Locale("pl", "PL"))
+            voiceReady = result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (!voiceReady) {
+                // Brak polskiego głosu nie może wywracać nawigacji — instrukcje zostają
+                // na ekranie, a przycisk mówi wprost, czemu nic nie słychać.
+                handler.post { dashboard.voiceButton.text = "Brak polskiego głosu" }
+            }
+        }
+    }
+
+    private fun toggleVoice() {
+        voiceEnabled = !voiceEnabled
+        if (!voiceEnabled) textToSpeech?.stop()
+        dashboard.voiceButton.text = if (voiceEnabled) "Głos: włączony" else "Głos: wyłączony"
+    }
+
+    private fun speak(text: String) {
+        if (!voiceEnabled || !voiceReady) return
+        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rb-guidance")
+    }
+
+    /**
+     * Reaguje na postęp na trasie: zapowiada manewry i przelicza trasę po zjechaniu.
+     *
+     * Obie decyzje podejmuje logika z modułu wspólnego — tutaj zostaje wywołanie syntezy
+     * mowy i ponowne zapytanie do silnika.
+     */
+    private fun handleGuidance(progress: RouteProgress) {
+        announcer.announce(progress)?.let { speak(it) }
+
+        if (offRouteDetector.update(progress)) {
+            val target = destination ?: return
+            speak("Zjechałeś z trasy. Wyznaczam nową.")
+            requestRoute(target)
+        }
     }
 
     // --- lokalizacja ---
@@ -530,6 +593,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         // jedyne wejście, które w ogóle pozwala maszynie stanów wejść w CRITICAL.
         routeProgress = currentRoute
             ?.let { route -> location?.let { RouteTracker.progress(route, GeoPoint(it.latitude, it.longitude)) } }
+        routeProgress?.let { handleGuidance(it) }
 
         val signals = RideSignals(
             distanceToManeuverMeters = routeProgress?.distanceToNextManeuverMeters,

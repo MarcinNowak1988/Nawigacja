@@ -43,6 +43,9 @@ class RideDashboard(private val context: Context) {
     lateinit var clearRouteButton: Button
         private set
 
+    lateinit var voiceButton: Button
+        private set
+
     lateinit var offlineDownloadButton: Button
         private set
 
@@ -173,15 +176,24 @@ class RideDashboard(private val context: Context) {
     private fun routeCard(): LinearLayout {
         val container = card("Trasa", listOf(KEY_ROUTE_SUMMARY, KEY_NEXT_MANEUVER, KEY_ROUTE_REMAINING))
 
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        voiceButton = Button(context).apply {
+            text = "Głos: włączony"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
         clearRouteButton = Button(context).apply {
             text = "Usuń trasę"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(8) }
         }
-        container.addView(clearRouteButton)
+
+        actions.addView(voiceButton)
+        actions.addView(clearRouteButton)
+        container.addView(actions)
 
         return container
     }
