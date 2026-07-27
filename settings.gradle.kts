@@ -10,6 +10,19 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         google()
+
+        // BRouter — silnik trasowania rowerowego działający na urządzeniu (ADR-0009).
+        //
+        // Projekt nie publikuje się do Maven Central; własne artefakty wystawia wyłącznie
+        // do GitHub Packages, co wymagałoby tokenu przy każdym budowaniu. JitPack buduje
+        // go wprost ze źródeł z GitHuba, więc jest jedyną drogą bez uwierzytelniania.
+        maven("https://jitpack.io") {
+            content {
+                // Zawężamy do tej jednej grupy: JitPack ma odpowiadać za BRouter i nic
+                // więcej, żeby literówka w innej zależności nie poszła po cichu tutaj.
+                includeGroupByRegex("com\\.github\\.abrensch.*")
+            }
+        }
     }
 }
 

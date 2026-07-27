@@ -36,3 +36,4 @@ powstaje nowy ADR, a stary dostaje status `Zastąpiony przez ADR-NNNN`.
 | [0006](0006-mapy-offline-przez-offlinemanager.md) | Mapy offline przez OfflineManager zamiast ręcznego `.mbtiles` | Zaakceptowany |
 | [0007](0007-aplikacja-online-z-zapisanymi-regionami.md) | Aplikacja online z zapisanymi regionami mapy | Zaakceptowany |
 | [0008](0008-wyszukiwanie-miejsc-w-mapy-com.md) | Wyszukiwanie miejsc w Mapy.com, mapa zostaje na OpenStreetMap | Wycofany przed wejściem w życie |
+| [0009](0009-brouter-na-urzadzeniu.md) | Trasowanie rowerowe przez BRouter na urządzeniu | Zaakceptowany, wdrożenie w toku |
