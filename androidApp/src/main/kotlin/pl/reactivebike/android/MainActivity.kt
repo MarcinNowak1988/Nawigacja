@@ -21,6 +21,8 @@ import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import pl.reactivebike.gps.GpsState
 import pl.reactivebike.gps.GpsStateMachine
+import pl.reactivebike.geocoding.GeocodeResult
+import pl.reactivebike.geocoding.Place
 import pl.reactivebike.gps.RideSignals
 import pl.reactivebike.maps.OfflineRegionEstimate
 import pl.reactivebike.maps.OfflineRegionEstimator
@@ -35,6 +37,8 @@ import pl.reactivebike.routing.ManeuverAnnouncer
 import pl.reactivebike.routing.OffRouteDetector
 import pl.reactivebike.routing.Route
 import pl.reactivebike.routing.RouteFailure
+import pl.reactivebike.routing.EtaBasis
+import pl.reactivebike.routing.RouteEta
 import pl.reactivebike.routing.RouteProgress
 import pl.reactivebike.routing.RoutePlan
 import pl.reactivebike.routing.RouteRequest
@@ -114,6 +118,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var weatherRequestInFlight = false
 
     private val routeEngine = HttpRouteEngine()
+    private val geocoder = HttpGeocoder()
+    private var searchInFlight = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** Plan przejazdu: start, punkty pośrednie i cel. Jedyne źródło prawdy o trasie. */
@@ -173,6 +179,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.undoStopButton.setOnClickListener { undoStop() }
         dashboard.startHereButton.setOnClickListener { toggleStart() }
         dashboard.profileButton.setOnClickListener { pickBicycleProfile() }
+        dashboard.searchAddButton.setOnClickListener { searchPlace(asStart = false) }
+        dashboard.searchStartButton.setOnClickListener { searchPlace(asStart = true) }
         dashboard.voiceButton.setOnClickListener { toggleVoice() }
 
         setUpVoice()
@@ -504,6 +512,93 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             .show()
     }
 
+    /**
+     * Szuka miejsca po nazwie i dokłada je do planu.
+     *
+     * @param asStart czy znalezione miejsce ma zostać startem, czy kolejnym punktem trasy
+     */
+    private fun searchPlace(asStart: Boolean) {
+        val query = dashboard.searchField.text?.toString().orEmpty().trim()
+        if (query.isBlank()) {
+            Toast.makeText(this, "Wpisz nazwę miejsca albo adres.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (searchInFlight) return
+
+        if (!hasNetwork()) {
+            Toast.makeText(this, "Brak sieci — wyszukiwanie miejsc wymaga połączenia.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        searchInFlight = true
+        setSearchEnabled(false)
+
+        // Bieżąca pozycja podbija trafność wyników: „Rynek" ma znaczyć rynek w okolicy,
+        // a nie pierwszy z brzegu na świecie.
+        val near = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
+
+        scope.launch {
+            val result = geocoder.search(query, near)
+            searchInFlight = false
+            setSearchEnabled(true)
+
+            when (result) {
+                is GeocodeResult.Success -> showSearchResults(result.places, asStart)
+                GeocodeResult.NoMatches ->
+                    Toast.makeText(this@MainActivity, "Nic nie znalazłem dla: $query", Toast.LENGTH_LONG).show()
+                GeocodeResult.Failure ->
+                    Toast.makeText(this@MainActivity, "Wyszukiwanie nie powiodło się.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun setSearchEnabled(enabled: Boolean) {
+        dashboard.searchAddButton.isEnabled = enabled
+        dashboard.searchStartButton.isEnabled = enabled
+        dashboard.searchAddButton.text = if (enabled) "Szukaj punktu" else "Szukam…"
+    }
+
+    /**
+     * Pokazuje wyniki do wyboru.
+     *
+     * Nazwy miejscowości się powtarzają, więc obok nazwy pokazujemy resztę adresu —
+     * bez tego wybór między trzema Nowymi Wsiami byłby losowaniem.
+     */
+    private fun showSearchResults(places: List<Place>, asStart: Boolean) {
+        val labels = places.map { place ->
+            if (place.detail.isBlank()) place.name else "${place.name}\n${place.detail}"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(if (asStart) "Wybierz start" else "Wybierz punkt trasy")
+            .setItems(labels) { _, which -> applyFoundPlace(places[which], asStart) }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+
+    private fun applyFoundPlace(place: Place, asStart: Boolean) {
+        if (asStart) {
+            plan = plan.withStart(place.point)
+        } else {
+            val extended = plan.withNextStop(place.point)
+            if (extended == null) {
+                Toast.makeText(
+                    this,
+                    "Limit ${RoutePlan.MAX_WAYPOINTS} punktów na trasę — usuń któryś, żeby dodać nowy.",
+                    Toast.LENGTH_LONG,
+                ).show()
+                return
+            }
+            plan = extended
+        }
+
+        dashboard.searchField.setText("")
+        mapPanel?.focusOn(place.point.latitude, place.point.longitude)
+        syncPlanOnMap()
+
+        if (plan.isComplete) requestRoute() else render()
+    }
+
     /** Wyznacza trasę dla bieżącego planu. */
     private fun requestRoute() {
         val here = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
@@ -619,6 +714,63 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
                 val off = if (RouteTracker.isOffRoute(it)) " — zjechałeś z trasy" else ""
                 "Do celu: ${formatDistance(it.remainingDistanceMeters)}$off"
             },
+        )
+
+        renderRouteProgress(route, progress)
+    }
+
+    /**
+     * Dane postępu: ile trasy za nami i kiedy będziemy na miejscu.
+     *
+     * Czas dojazdu liczony jest z tempa, którym rowerzysta faktycznie jedzie, a na postoju
+     * z planu silnika. Podstawę podajemy wprost, bo „za 40 minut" znaczy co innego, gdy
+     * wynika z pomiaru, a co innego, gdy z założeń profilu rowerowego.
+     */
+    private fun renderRouteProgress(route: Route, progress: RouteProgress?) {
+        if (progress == null) {
+            dashboard.set(RideDashboard.KEY_ROUTE_PROGRESS, null)
+            dashboard.set(RideDashboard.KEY_ROUTE_ETA, null)
+            return
+        }
+
+        val percent = (progress.completedFraction * 100).roundToInt().coerceIn(0, 100)
+        dashboard.set(
+            RideDashboard.KEY_ROUTE_PROGRESS,
+            "Przejechane: ${formatDistance(progress.traveledDistanceMeters)} " +
+                "z ${formatDistance(progress.totalDistanceMeters)} ($percent%)",
+        )
+
+        val estimate = RouteEta.estimate(route, progress, currentSpeedMetersPerSecond())
+        val remaining = estimate.remainingDurationSeconds
+        if (remaining == null) {
+            dashboard.set(RideDashboard.KEY_ROUTE_ETA, null)
+            return
+        }
+
+        val basis = when (estimate.basis) {
+            EtaBasis.MEASURED_SPEED -> "wg tempa"
+            EtaBasis.ENGINE_ESTIMATE -> "wg planu"
+        }
+        dashboard.set(
+            RideDashboard.KEY_ROUTE_ETA,
+            "Zostało ${formatDuration(remaining)} — na miejscu ok. ${formatClock(remaining)} ($basis)",
+        )
+    }
+
+    /** Prędkość nadająca się na podstawę oszacowania; `null`, gdy odbiornik jej nie podaje. */
+    private fun currentSpeedMetersPerSecond(): Double? =
+        lastLocation?.takeIf { it.hasSpeed() }?.speed?.toDouble()
+
+    /** Godzina oddalona o zadaną liczbę sekund, w formacie zegarowym. */
+    private fun formatClock(inSeconds: Long): String {
+        val arrival = java.util.Calendar.getInstance().apply {
+            timeInMillis = System.currentTimeMillis() + inSeconds * 1_000
+        }
+        return String.format(
+            Locale.getDefault(),
+            "%02d:%02d",
+            arrival.get(java.util.Calendar.HOUR_OF_DAY),
+            arrival.get(java.util.Calendar.MINUTE),
         )
     }
 

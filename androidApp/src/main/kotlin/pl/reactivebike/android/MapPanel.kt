@@ -281,6 +281,17 @@ class MapPanel(context: Context) {
         }
     }
 
+    /**
+     * Przesuwa kamerę na wskazany punkt — np. na miejsce znalezione po nazwie.
+     *
+     * Przy okazji wyłącza podążanie za pozycją: użytkownik chce zobaczyć to, czego szukał,
+     * a nie zostać w pół sekundy przerzucony z powrotem nad własny rower.
+     */
+    fun focusOn(latitude: Double, longitude: Double) {
+        followPosition = false
+        map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(latitude, longitude), ZOOM))
+    }
+
     /** Przywraca podążanie kamery za pozycją po tym, jak użytkownik przesunął mapę. */
     fun recenter() {
         followPosition = true

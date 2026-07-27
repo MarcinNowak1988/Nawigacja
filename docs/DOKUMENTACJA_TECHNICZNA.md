@@ -2,7 +2,7 @@
 **Nawigacja Rowerowa Online z Zapisywanymi Regionami Mapy**
 *(do wersji 1.2: „Nawigacja Rowerowa Offline-First” — patrz [ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md))*
 
-- **Wersja dokumentu:** 2.0
+- **Wersja dokumentu:** 2.1
 - **Data:** 26 lipca 2026
 - **Status:** Specyfikacja systemu (draft)
 - **Zakres:** Architektura, logika trasowania, moduł AI, zarządzanie baterią, tryb offline, prywatność
@@ -14,6 +14,10 @@
 > **Zmiany w wersji 1.2.** Doprecyzowano sekcję 8: ważność bufora pogodowego liczona jest
 > od wydania prognozy, a barometr nasłuchiwany jest równolegle z buforem, nie po jego
 > wygaśnięciu ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)).
+>
+> **Zmiany w wersji 2.1.** Trasa powstaje z planu przejazdu z punktami pośrednimi, wskazywanymi
+> na mapie albo przez wyszukiwanie tekstowe (sekcja 5.0). Doszły dane postępu z szacowanym
+> czasem dojazdu (5.0.1). Sekcja 9 odnotowuje, że zapytania wyszukiwarki także opuszczają urządzenie.
 >
 > **Zmiany w wersji 2.0 — zmiana kierunku produktu.** ReactiveBike jest **aplikacją online**.
 > Wyznaczanie trasy wymaga sieci; tryb offline zawęża się do zapisanych regionów mapy.
@@ -66,6 +70,7 @@ w tabeli, żeby nie zgubić informacji o tym, czym produkt miał być:
 | UI — Android | Jetpack Compose | Natywny interfejs użytkownika |
 | UI — iOS | SwiftUI | Natywny interfejs użytkownika |
 | Silnik mapy | MapLibre GL Native | Renderowanie map wektorowych; regiony offline przez `OfflineManager` ([ADR-0006](adr/0006-mapy-offline-przez-offlinemanager.md)), a nie pliki `.mbtiles` z [ADR-0003](adr/0003-offline-mbtiles.md) |
+| Wyszukiwanie miejsc | Nominatim (OSM) | Zamiana nazwy albo adresu na współrzędne; **wymaga połączenia** |
 | Silnik trasowania | Usługa sieciowa (Valhalla) | Wyznaczanie tras **wymaga połączenia** ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). Ukryty za portem `RouteEngine`, więc pozostaje wymienialny ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)) |
 | Warstwa sieciowa | Ktor | Komunikacja z Open-Meteo i modelem AI |
 | Baza danych | SQLDelight | Lokalny bufor map, tras i prognoz pogody |
@@ -131,7 +136,7 @@ Trasy są wyliczane przez **usługę sieciową** ([ADR-0007](adr/0007-aplikacja-
 
 Wzór kosztu i semantyka wag należą do warstwy wspólnej (`shared`, pakiet `routing`) i są niezależne od silnika; warstwa natywna tłumaczy je na format konkretnego silnika ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)).
 
-### 5.0 Plan przejazdu i profil roweru
+### 5.0 Plan przejazdu, wyszukiwanie miejsc i profil roweru
 
 Trasa powstaje z **planu przejazdu**: punktu startowego, dowolnej liczby punktów pośrednich i celu. Start domyślnie znaczy „moja bieżąca pozycja" i rozwijany jest dopiero w chwili wyznaczania, żeby plan ułożony w domu nie prowadził z domu, gdy rowerzysta już ruszył. Model (`RoutePlan`) jest niezmienny i mieszka w warstwie wspólnej wraz z operacjami dodawania, cofania i czyszczenia.
 
@@ -139,6 +144,19 @@ Dwie zasady są warte zapisania, bo nie wynikają z niczego oczywistego:
 
 - **Punkty pośrednie są konsumowane po kolei.** Minięcie punktu zdejmuje go z planu, dzięki czemu przeliczenie trasy po zjechaniu z niej prowadzi do przodu, a nie zawraca do punktów, które są już za plecami. Minięcie punktu późniejszego **nie** kasuje wcześniejszego — kolejność planu jest wiążąca.
 - **Limit punktów pilnowany jest po naszej stronie** (20 lokalizacji, tyle przyjmuje publiczna instancja Valhalli). Użytkownik dowiaduje się o limicie przy dodawaniu punktu, a nie z błędu serwera po naciśnięciu „wyznacz".
+
+Punkty planu wskazuje się na mapie albo **wpisując nazwę miejsca**. Wyszukiwanie opiera się o publiczną instancję Nominatim; jej zasady korzystania są wiążące, nie uprzejme, i kształtują interfejs: wymagany jest identyfikujący `User-Agent`, najwyżej jedno zapytanie na sekundę oraz **brak podpowiedzi w trakcie pisania**. Dlatego szukanie uruchamia przycisk, a nie każde naciśnięcie klawisza. Bieżąca pozycja podbija trafność wyników miękkim oknem (`bounded=0`) — „Rynek" ma znaczyć rynek w okolicy, ale rynek z drugiego końca kraju dalej da się znaleźć.
+
+### 5.0.1 Dane postępu
+
+W trakcie jazdy aplikacja pokazuje, ile trasy jest już za rowerzystą, ile zostało i kiedy będzie na miejscu. Czas dojazdu ma dwa źródła i **aplikacja mówi, którego użyła**:
+
+| Podstawa | Kiedy | Dlaczego |
+|---|---|---|
+| Tempo rowerzysty | gdy prędkość ≥ 1,5 m/s | Uwzględnia wiatr, przyczepkę i to, że ktoś jedzie wolniej niż zakłada profil |
+| Plan silnika, przeskalowany pozostałym dystansem | na postoju i tuż po starcie | Z chwilowej prędkości bliskiej zeru nie da się nic wywnioskować |
+
+Świadomie **nie** uśredniamy tempa z całego przejazdu: postój na światłach albo przerwa na kawę zaniżyłyby średnią tak, że oszacowanie przestałoby odpowiadać temu, jak się jedzie teraz.
 
 Rodzaj roweru wybiera użytkownik — miejski, trekkingowy, górski albo szosowy. To nie jest kosmetyka: szosówka i rower górski jadące między tymi samymi punktami powinny dostać różne trasy, bo co dla jednego jest skrótem, dla drugiego kończy przejazd. Profil ustala punkt wyjścia dla wag, a **pogoda może je wyłącznie zaostrzyć, nigdy rozluźnić** — ta sama zasada, na której stoi [ADR-0002](adr/0002-model-wag-tylko-podwyzszajacy.md). Deszcz każe mocniej omijać błoto, ale nie wypchnie roweru szosowego na szuter, bo to nie pogoda decyduje, jakie opony ma użytkownik.
 
@@ -344,11 +362,12 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 - **~~Trasowanie lokalne~~ — nieaktualne od wersji 2.0.** Wyznaczanie trasy odbywa się w usłudze sieciowej, więc **punkt startowy i cel opuszczają urządzenie** przy każdym zapytaniu. To realne osłabienie filaru prywatności i wymaga decyzji: czy i jak informować o tym użytkownika oraz czy zapytania anonimizować ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)).
 - **Brak warstwy społecznościowej** — brak kont publicznych, udostępniania tras czy telemetrii porównawczej między użytkownikami eliminuje całą klasę ryzyk związanych z prywatnością lokalizacji.
 - **Lokalny bufor danych** — SQLDelight przechowuje mapy, trasy i prognozy pogody na urządzeniu, nie w chmurze.
-- **Ograniczony zakres komunikacji sieciowej** — jedyne zewnętrzne wywołania to Open-Meteo (pogoda) i model AI (tłumaczenie wag) — brak stałego trackingu pozycji wysyłanego w tle na serwer.
+- **~~Ograniczony zakres komunikacji sieciowej~~ — nieaktualne od wersji 2.1.** Poza Open-Meteo i modelem AI aplikacja odpytuje **usługę trasowania** (punkt startowy, punkty pośrednie i cel) oraz **wyszukiwarkę miejsc** (wpisany tekst wraz z okolicą bieżącej pozycji, którą podbijamy trafność wyników). Nadal nie ma stałego trackingu pozycji wysyłanego w tle — zapytania idą wyłącznie w odpowiedzi na działanie użytkownika — ale zakres tego, co opuszcza urządzenie, urósł i trzeba to nazywać wprost.
 
 ### 9.2 Do doprecyzowania
 
 - Dokładny zakres danych (same współrzędne vs. historia trasy) wysyłanych do Open-Meteo i modelu AI oraz to, czy zapytania są anonimizowane / pozbawione identyfikatorów użytkownika.
+- **Wyszukiwanie miejsc.** Wpisany tekst trafia do publicznej instancji Nominatim wraz z oknem wokół bieżącej pozycji. Zapytanie „dom babci Kraków" mówi o użytkowniku więcej niż same współrzędne. Do rozstrzygnięcia razem z decyzją o instancji trasowania: publiczna czy własna.
 - Polityka retencji lokalnego bufora (SQLDelight) — czy i kiedy stare trasy/prognozy są czyszczone z urządzenia.
 - Wymuszenie szyfrowanej transmisji (TLS) w warstwie Ktor dla wszystkich połączeń zewnętrznych.
 

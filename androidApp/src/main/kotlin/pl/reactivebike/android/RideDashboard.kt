@@ -8,7 +8,9 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -50,6 +52,15 @@ class RideDashboard(private val context: Context) {
         private set
 
     lateinit var profileButton: Button
+        private set
+
+    lateinit var searchField: EditText
+        private set
+
+    lateinit var searchAddButton: Button
+        private set
+
+    lateinit var searchStartButton: Button
         private set
 
     lateinit var voiceButton: Button
@@ -163,11 +174,12 @@ class RideDashboard(private val context: Context) {
             TextView(context).apply {
                 // ADR-0007 mówi wprost, że tego nie wolno przemilczeć: bez zasięgu zostaje
                 // mapa z komputerem rowerowym, a nie nawigacja.
-                text = "Przytrzymaj palec na mapie, żeby dodać punkt trasy. Pierwszy punkt " +
-                    "to cel, każdy następny przesuwa cel dalej — kolejność wskazywania " +
-                    "jest kolejnością jazdy. Wyznaczanie trasy wymaga zasięgu; pobrany " +
-                    "obszar wyświetli się bez sieci razem z pozycją, prędkością " +
-                    "i ciśnieniem, ale trasy w nim nie wyznaczysz."
+                text = "Punkty trasy dodajesz przytrzymując palec na mapie albo wpisując " +
+                    "nazwę miejsca. Pierwszy punkt to cel, każdy następny przesuwa cel " +
+                    "dalej — kolejność dodawania jest kolejnością jazdy. Wyznaczanie " +
+                    "trasy i wyszukiwanie miejsc wymagają zasięgu; pobrany obszar " +
+                    "wyświetli się bez sieci razem z pozycją, prędkością i ciśnieniem, " +
+                    "ale trasy w nim nie wyznaczysz."
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTextColor(MUTED)
                 setPadding(dp(4), dp(14), dp(4), 0)
@@ -196,8 +208,18 @@ class RideDashboard(private val context: Context) {
     private fun routeCard(): LinearLayout {
         val container = card(
             "Trasa",
-            listOf(KEY_ROUTE_PLAN, KEY_ROUTE_SUMMARY, KEY_NEXT_MANEUVER, KEY_ROUTE_REMAINING, KEY_BICYCLE_PROFILE),
+            listOf(
+                KEY_ROUTE_PLAN,
+                KEY_ROUTE_SUMMARY,
+                KEY_NEXT_MANEUVER,
+                KEY_ROUTE_PROGRESS,
+                KEY_ROUTE_ETA,
+                KEY_ROUTE_REMAINING,
+                KEY_BICYCLE_PROFILE,
+            ),
         )
+
+        container.addView(searchRow())
 
         val planActions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -240,6 +262,54 @@ class RideDashboard(private val context: Context) {
         container.addView(rideActions)
 
         return container
+    }
+
+    /**
+     * Wyszukiwanie miejsca po nazwie.
+     *
+     * Dwa przyciski zamiast trybu do zapamiętania: ta sama wpisana nazwa trafia albo na
+     * koniec trasy, albo na jej początek, zależnie od tego, który przycisk zostanie
+     * naciśnięty. Nie ma stanu, który użytkownik musiałby śledzić.
+     *
+     * Szukanie uruchamia przycisk, a nie pisanie — Nominatim wprost zabrania podpowiedzi
+     * w trakcie wpisywania.
+     */
+    private fun searchRow(): LinearLayout {
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(10), 0, 0)
+        }
+
+        searchField = EditText(context).apply {
+            hint = "Nazwa miejsca lub adres"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            isSingleLine = true
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        column.addView(searchField)
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        searchStartButton = Button(context).apply {
+            text = "Szukaj startu"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        searchAddButton = Button(context).apply {
+            text = "Szukaj punktu"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        actions.addView(searchStartButton)
+        actions.addView(searchAddButton)
+        column.addView(actions)
+
+        return column
     }
 
     /** Karta map offline — pobieranie jest czynnością użytkownika, więc ma własne akcje. */
@@ -338,6 +408,8 @@ class RideDashboard(private val context: Context) {
         const val KEY_ROUTE_PLAN = "routePlan"
         const val KEY_BICYCLE_PROFILE = "bicycleProfile"
         const val KEY_ROUTE_SUMMARY = "routeSummary"
+        const val KEY_ROUTE_PROGRESS = "routeProgress"
+        const val KEY_ROUTE_ETA = "routeEta"
         const val KEY_NEXT_MANEUVER = "nextManeuver"
         const val KEY_ROUTE_REMAINING = "routeRemaining"
 

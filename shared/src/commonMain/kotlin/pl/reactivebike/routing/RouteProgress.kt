@@ -8,6 +8,7 @@ package pl.reactivebike.routing
  * @property nextManeuver najbliższy manewr przed nami; `null` gdy trasa się kończy
  * @property distanceToNextManeuverMeters odległość do tego manewru wzdłuż trasy
  * @property remainingDistanceMeters ile jeszcze zostało do celu
+ * @property traveledDistanceMeters ile trasy jest już za nami, licząc wzdłuż niej
  */
 data class RouteProgress(
     val nearestIndex: Int,
@@ -15,7 +16,21 @@ data class RouteProgress(
     val nextManeuver: Maneuver?,
     val distanceToNextManeuverMeters: Double?,
     val remainingDistanceMeters: Double,
-)
+    val traveledDistanceMeters: Double = 0.0,
+) {
+
+    /** Długość trasy widziana z perspektywy postępu — suma tego, co za nami i przed nami. */
+    val totalDistanceMeters: Double get() = traveledDistanceMeters + remainingDistanceMeters
+
+    /**
+     * Ułamek trasy za nami, w zakresie 0..1.
+     *
+     * Trasa zerowej długości daje 0.0, a nie dzielenie przez zero — zdarza się przy trasie
+     * do punktu, na którym już stoimy.
+     */
+    val completedFraction: Double
+        get() = if (totalDistanceMeters <= 0.0) 0.0 else traveledDistanceMeters / totalDistanceMeters
+}
 
 /**
  * Liczy postęp na trasie — czysta funkcja pozycji i trasy.
@@ -57,6 +72,7 @@ object RouteTracker {
             nextManeuver = nextManeuver,
             distanceToNextManeuverMeters = distanceToManeuver,
             remainingDistanceMeters = distanceAlong(geometry, nearestIndex, geometry.lastIndex),
+            traveledDistanceMeters = distanceAlong(geometry, 0, nearestIndex),
         )
     }
 
