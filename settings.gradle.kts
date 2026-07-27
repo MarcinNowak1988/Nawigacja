@@ -17,6 +17,17 @@ rootProject.name = "reactivebike"
 
 include(":shared")
 
+// Silnik trasowania BRouter budowany ze źródeł z podmodułu `third_party/brouter` (ADR-0009).
+// To zwykła biblioteka Javy, więc kompiluje się bez Android SDK — także tutaj, lokalnie.
+if (file("third_party/brouter/brouter-core/src/main/java").exists()) {
+    include(":brouter")
+} else {
+    logger.lifecycle(
+        "Podmodul BRouter nie jest pobrany - pomijam modul :brouter. " +
+            "Uruchom: git submodule update --init --depth 1",
+    )
+}
+
 // Warstwa androidowa dołącza się tylko wtedy, gdy Android SDK jest dostępne.
 //
 // Moduł `shared` jest z założenia platform-niezależny, więc jego kompilacja i testy nie

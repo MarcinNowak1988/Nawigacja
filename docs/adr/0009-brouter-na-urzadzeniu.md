@@ -69,9 +69,14 @@ Ustalenia, które zebraliśmy przed decyzją:
   z runnera, ale nie wystawia artefaktu `com.github.abrensch.brouter:brouter-core`, ani pod
   wersją `1.7.10`, ani pod nazwą taga `v1.7.10`. Przyczyny nie da się zdiagnozować z tego
   środowiska, bo JitPack jest tu zablokowany. Zależność została wycofana, żeby nie trzymać
-  zepsutego builda, a **drogą docelową jest podmoduł git**: źródła BRoutera kompilowane przez
-  nasz własny moduł Gradle, z pominięciem ich `buildSrc` (checkstyle, pmd, konwencje wersji).
-  To usuwa pośrednika i czyni build powtarzalnym.
+  zepsutego builda, a **drogą docelową został podmoduł git**: źródła BRoutera kompilowane
+  przez nasz własny moduł Gradle, z pominięciem ich `buildSrc` (checkstyle, pmd, konwencje
+  wersji). To usuwa pośrednika i czyni build powtarzalnym.
+- **Podmoduł okazał się lepszy, niż zakładaliśmy.** Pięć modułów trasowania BRoutera nie ma
+  **żadnych** zależności zewnętrznych — tylko wzajemne — i są to zwykłe klasy Javy. Dzięki
+  temu moduł `:brouter` kompiluje się **bez Android SDK, także lokalnie**, więc integracja
+  silnika przestaje zależeć od CI jako jedynego kompilatora. To odwraca największą słabość
+  poprzednich rund.
 
 ## Rozważane alternatywy
 

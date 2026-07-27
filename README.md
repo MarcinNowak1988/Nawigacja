@@ -83,6 +83,14 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 
 Wymagany JDK 21. Gradle dostarcza wrapper, więc nie trzeba instalować go osobno.
 
+Repozytorium ma podmoduł z silnikiem trasowania BRouter, więc po sklonowaniu:
+
+```bash
+git submodule update --init --depth 1
+```
+
+Bez niego moduł `:brouter` nie powstaje, a build mówi wprost, czego brakuje.
+
 ```bash
 ./gradlew build           # kompilacja i testy
 ./gradlew :shared:jvmTest # same testy modułu shared

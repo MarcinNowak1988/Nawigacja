@@ -32,6 +32,9 @@ jobs:
     steps:
       - name: Pobranie kodu
         uses: actions/checkout@v4
+        with:
+          # BRouter jest podmodulem (ADR-0009) — bez tego modul :brouter nie powstaje.
+          submodules: true
 
       - name: Konfiguracja JDK
         uses: actions/setup-java@v4

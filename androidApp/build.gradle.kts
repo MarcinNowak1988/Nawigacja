@@ -109,6 +109,13 @@ kotlin {
 dependencies {
     implementation(project(":shared"))
 
+    // Silnik trasowania rowerowego działający na urządzeniu (ADR-0009).
+    //
+    // Zależność jest warunkowa, bo moduł istnieje tylko wtedy, gdy pobrany jest podmoduł
+    // `third_party/brouter`. Bez tego build kończyłby się błędem o nieznanym projekcie
+    // zamiast czytelną informacją, czego brakuje.
+    findProject(":brouter")?.let { implementation(it) }
+
     implementation(libs.maplibre.android.sdk)
     implementation(libs.kotlinx.coroutines.android)
 }
