@@ -18,7 +18,19 @@ import android.widget.Toast
 import pl.reactivebike.gps.GpsState
 import pl.reactivebike.gps.GpsStateMachine
 import pl.reactivebike.gps.RideSignals
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import pl.reactivebike.routing.EdgeWeight
+import pl.reactivebike.routing.GeoPoint
+import pl.reactivebike.routing.Route
+import pl.reactivebike.routing.RouteFailure
+import pl.reactivebike.routing.RouteProgress
+import pl.reactivebike.routing.RouteRequest
+import pl.reactivebike.routing.RouteResult
+import pl.reactivebike.routing.RouteTracker
 import pl.reactivebike.weather.CachedWeatherWeights
 import pl.reactivebike.weather.LocalWeightsTranslator
 import pl.reactivebike.weather.OfflineWeatherPolicy
@@ -48,8 +60,12 @@ import kotlin.math.sqrt
  * - **polityka offline (sekcja 8.1)** rozstrzyga, które wagi obowiązują: z bieżącego pomiaru
  *   ciśnienia, ze zbuforowanej prognozy czy domyślne.
  *
- * Czego tu **nie ma**: mapy, trasowania i nawigacji zakrętowej. Wymagają MapLibre oraz
- * silnika trasowania (ADR-0001) i są następnym krokiem.
+ * Trasa wyznaczana jest przez [HttpRouteEngine] — pierwszą implementację portu z ADR-0001.
+ * Odległość do najbliższego manewru trafia do maszyny stanów, dzięki czemu stan `CRITICAL`
+ * wreszcie się pojawia; bez wyznaczonej trasy był nieosiągalny.
+ *
+ * Czego tu **nie ma**: trasowania offline. Silnik na urządzeniu podmieni implementację
+ * portu, nie ruszając tej klasy.
  */
 class MainActivity : Activity(), LocationListener, SensorEventListener {
 
@@ -86,6 +102,15 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var weatherStatus: String? = null
     private var weatherRequestInFlight = false
 
+    private val routeEngine = HttpRouteEngine()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private var destination: GeoPoint? = null
+    private var currentRoute: Route? = null
+    private var routeProgress: RouteProgress? = null
+    private var routeStatus: String? = null
+    private var routeRequestInFlight = false
+
     private val stormDetector = StormDetector()
     private val offlinePolicy = OfflineWeatherPolicy()
 
@@ -120,6 +145,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.recenterButton.setOnClickListener { mapPanel?.recenter() }
 
         setUpOfflineMaps(panel, mapError)
+
+        panel?.onDestinationPicked = { lat, lon -> requestRoute(GeoPoint(lat, lon)) }
+        dashboard.clearRouteButton.setOnClickListener { clearRoute() }
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -183,6 +211,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        scope.cancel()
         offlineMaps?.stop()
         mapPanel?.onDestroy()
         network.shutdownNow()
@@ -277,6 +306,105 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.offlineDeleteButton.setOnClickListener { downloader.deleteAll() }
 
         downloader.refresh()
+    }
+
+
+    // --- trasowanie ---
+
+    /** Wyznacza trasę z bieżącej pozycji do wskazanego punktu. */
+    private fun requestRoute(target: GeoPoint) {
+        val from = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
+        if (from == null) {
+            Toast.makeText(this, "Czekam na pozycję — bez niej nie ma skąd wyznaczyć trasy.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (routeRequestInFlight) return
+
+        destination = target
+        routeRequestInFlight = true
+        routeStatus = "Wyznaczam trasę…"
+        mapPanel?.showRoute(emptyList(), target)
+        render()
+
+        routeEngine.conditions = conditions
+
+        scope.launch {
+            val result = routeEngine.route(RouteRequest(listOf(from, target)))
+            routeRequestInFlight = false
+
+            when (result) {
+                is RouteResult.Success -> {
+                    currentRoute = result.route
+                    routeStatus = null
+                    mapPanel?.showRoute(result.route.geometry, target)
+                }
+
+                is RouteResult.Failure -> {
+                    currentRoute = null
+                    routeStatus = when (result.reason) {
+                        RouteFailure.NO_ROUTE_FOUND -> "Nie znalazłem trasy do tego punktu."
+                        RouteFailure.MISSING_MAP_DATA -> "Brak danych mapowych dla tego obszaru."
+                        RouteFailure.ENGINE_ERROR -> "Trasowanie niedostępne — sprawdź połączenie."
+                    }
+                }
+            }
+            render()
+        }
+    }
+
+    private fun clearRoute() {
+        destination = null
+        currentRoute = null
+        routeProgress = null
+        routeStatus = null
+        mapPanel?.clearRoute()
+        render()
+    }
+
+    private fun renderRoute() {
+        val route = currentRoute
+        val status = routeStatus
+
+        if (route == null) {
+            dashboard.set(
+                RideDashboard.KEY_ROUTE_SUMMARY,
+                status ?: "Brak trasy. Przytrzymaj palec na mapie, żeby wskazać cel.",
+            )
+            dashboard.set(RideDashboard.KEY_NEXT_MANEUVER, null)
+            dashboard.set(RideDashboard.KEY_ROUTE_REMAINING, null)
+            dashboard.clearRouteButton.isEnabled = destination != null
+            return
+        }
+
+        dashboard.clearRouteButton.isEnabled = true
+        dashboard.set(
+            RideDashboard.KEY_ROUTE_SUMMARY,
+            "${formatDistance(route.distanceMeters)}, ok. ${formatDuration(route.estimatedDurationSeconds)}",
+        )
+
+        val progress = routeProgress
+        dashboard.set(
+            RideDashboard.KEY_NEXT_MANEUVER,
+            progress?.nextManeuver?.let { maneuver ->
+                val distance = progress.distanceToNextManeuverMeters?.let { " za ${formatDistance(it)}" }.orEmpty()
+                "${maneuver.instruction}$distance"
+            } ?: "Jedź dalej.",
+        )
+        dashboard.set(
+            RideDashboard.KEY_ROUTE_REMAINING,
+            progress?.let {
+                val off = if (RouteTracker.isOffRoute(it)) " — zjechałeś z trasy" else ""
+                "Do celu: ${formatDistance(it.remainingDistanceMeters)}$off"
+            },
+        )
+    }
+
+    private fun formatDistance(meters: Double): String =
+        if (meters >= 1_000) "${(meters / 100).roundToInt() / 10.0} km" else "${meters.roundToInt()} m"
+
+    private fun formatDuration(seconds: Long): String {
+        val minutes = (seconds + 30) / 60
+        return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
     }
 
     // --- lokalizacja ---
@@ -398,9 +526,13 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         val location = lastLocation
         val speedKmh = location?.takeIf { it.hasSpeed() }?.speed?.times(3.6)?.toDouble() ?: 0.0
 
+        // Postęp na trasie liczymy tutaj, bo to on dostarcza odległość do manewru —
+        // jedyne wejście, które w ogóle pozwala maszynie stanów wejść w CRITICAL.
+        routeProgress = currentRoute
+            ?.let { route -> location?.let { RouteTracker.progress(route, GeoPoint(it.latitude, it.longitude)) } }
+
         val signals = RideSignals(
-            // Bez trasy nie ma manewrów — stan CRITICAL pojawi się dopiero z nawigacją.
-            distanceToManeuverMeters = null,
+            distanceToManeuverMeters = routeProgress?.distanceToNextManeuverMeters,
             speedKmh = speedKmh,
             screenOn = screenOn,
             motionDetected = motionDetected,
@@ -512,6 +644,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     private fun render() {
         renderSpeed()
+        renderRoute()
         renderPosition()
         renderGps()
         renderPressure()

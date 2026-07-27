@@ -34,16 +34,38 @@ data class RouteRequest(
 }
 
 /**
+ * Pojedynczy manewr nawigacyjny.
+ *
+ * @property instruction treść do pokazania użytkownikowi
+ * @property distanceMeters długość odcinka, którego dotyczy manewr
+ * @property durationSeconds szacowany czas tego odcinka
+ * @property beginShapeIndex indeks w [Route.geometry], w którym manewr się zaczyna —
+ *   po nim liczona jest odległość, która steruje wejściem w stan `CRITICAL` (sekcja 7)
+ */
+data class Maneuver(
+    val instruction: String,
+    val distanceMeters: Double,
+    val durationSeconds: Long,
+    val beginShapeIndex: Int,
+) {
+    init {
+        require(beginShapeIndex >= 0) { "Indeks poczatku manewru musi byc nieujemny: $beginShapeIndex" }
+    }
+}
+
+/**
  * Wyznaczona trasa.
  *
  * @property geometry kolejne punkty przebiegu trasy
  * @property distanceMeters łączna długość
  * @property estimatedDurationSeconds szacowany czas przejazdu
+ * @property maneuvers manewry w kolejności przejazdu; puste, gdy silnik ich nie dostarcza
  */
 data class Route(
     val geometry: List<GeoPoint>,
     val distanceMeters: Double,
     val estimatedDurationSeconds: Long,
+    val maneuvers: List<Maneuver> = emptyList(),
 ) {
     init {
         require(distanceMeters.isFinite() && distanceMeters >= 0.0) {

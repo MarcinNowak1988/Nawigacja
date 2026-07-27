@@ -40,6 +40,9 @@ class RideDashboard(private val context: Context) {
     lateinit var recenterButton: Button
         private set
 
+    lateinit var clearRouteButton: Button
+        private set
+
     lateinit var offlineDownloadButton: Button
         private set
 
@@ -123,6 +126,7 @@ class RideDashboard(private val context: Context) {
             setPadding(dp(14), dp(14), dp(14), dp(20))
         }
 
+        column.addView(routeCard())
         column.addView(offlineCard())
         column.addView(card("Pozycja", listOf(KEY_COORDS, KEY_ACCURACY, KEY_ALTITUDE, KEY_FIX_AGE)))
         column.addView(card("Tryb GPS", listOf(KEY_GPS_STATE, KEY_GPS_RATE, KEY_GPS_REASON)))
@@ -145,8 +149,8 @@ class RideDashboard(private val context: Context) {
 
         column.addView(
             TextView(context).apply {
-                text = "Wersja poglądowa. Mapa i ślad przejazdu działają; wyznaczania trasy " +
-                    "i nawigacji zakrętowej jeszcze nie ma."
+                text = "Przytrzymaj palec na mapie, żeby wyznaczyć trasę. Trasowanie działa " +
+                    "przez sieć — wersja offline dopiero powstaje."
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTextColor(MUTED)
                 setPadding(dp(4), dp(14), dp(4), 0)
@@ -165,7 +169,24 @@ class RideDashboard(private val context: Context) {
         }
     }
 
-    /** Karta map offline — jako jedyna zawiera akcje, bo pobieranie jest czynnością użytkownika. */
+    /** Karta trasy — pokazuje cel, najbliższy manewr i to, co zostało do przejechania. */
+    private fun routeCard(): LinearLayout {
+        val container = card("Trasa", listOf(KEY_ROUTE_SUMMARY, KEY_NEXT_MANEUVER, KEY_ROUTE_REMAINING))
+
+        clearRouteButton = Button(context).apply {
+            text = "Usuń trasę"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+        }
+        container.addView(clearRouteButton)
+
+        return container
+    }
+
+    /** Karta map offline — pobieranie jest czynnością użytkownika, więc ma własne akcje. */
     private fun offlineCard(): LinearLayout {
         val container = card("Mapa offline", listOf(KEY_OFFLINE_STATUS, KEY_OFFLINE_DETAIL))
 
@@ -254,6 +275,10 @@ class RideDashboard(private val context: Context) {
         const val KEY_PRECIPITATION = "precipitation"
         const val KEY_WIND = "wind"
         const val KEY_WEATHER_AGE = "weatherAge"
+
+        const val KEY_ROUTE_SUMMARY = "routeSummary"
+        const val KEY_NEXT_MANEUVER = "nextManeuver"
+        const val KEY_ROUTE_REMAINING = "routeRemaining"
 
         const val KEY_OFFLINE_STATUS = "offlineStatus"
         const val KEY_OFFLINE_DETAIL = "offlineDetail"

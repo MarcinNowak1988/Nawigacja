@@ -13,6 +13,7 @@ import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
@@ -50,6 +51,9 @@ class MapPanel(context: Context) {
     private val track = mutableListOf<Point>()
     private var followPosition = true
 
+    /** Wywoływane po długim naciśnięciu mapy — tak użytkownik wskazuje cel trasy. */
+    var onDestinationPicked: ((Double, Double) -> Unit)? = null
+
     /** Pozycja, na którą ustawiamy kamerę, zanim mapa się wczyta — np. ostatnia znana z systemu. */
     private var pendingCamera: LatLng? = null
     private var pendingZoom: Double = DEFAULT_ZOOM
@@ -84,6 +88,10 @@ class MapPanel(context: Context) {
             ready.moveCamera(
                 CameraUpdateFactory.newLatLngZoom(pendingCamera ?: DEFAULT_CAMERA, pendingZoom),
             )
+            ready.addOnMapLongClickListener { point ->
+                onDestinationPicked?.invoke(point.latitude, point.longitude)
+                true
+            }
             loadStyle(ready, PRIMARY_STYLE)
         }
 
@@ -110,6 +118,20 @@ class MapPanel(context: Context) {
         map?.projection?.visibleRegion?.latLngBounds
 
     private fun addLayers(style: Style) {
+        // Kolejność dodawania wyznacza kolejność rysowania: trasa pod śladem przejazdu,
+        // a pozycja i cel na samej górze, żeby nigdy nie zniknęły pod linią.
+        if (style.getSource(SOURCE_ROUTE) == null) {
+            style.addSource(org.maplibre.android.style.sources.GeoJsonSource(SOURCE_ROUTE))
+            style.addLayer(
+                LineLayer(LAYER_ROUTE, SOURCE_ROUTE).withProperties(
+                    PropertyFactory.lineColor(ROUTE_COLOR),
+                    PropertyFactory.lineWidth(7f),
+                    PropertyFactory.lineOpacity(0.85f),
+                    PropertyFactory.lineCap("round"),
+                    PropertyFactory.lineJoin("round"),
+                ),
+            )
+        }
         if (style.getSource(SOURCE_TRACK) == null) {
             style.addSource(org.maplibre.android.style.sources.GeoJsonSource(SOURCE_TRACK))
             style.addLayer(
@@ -118,6 +140,17 @@ class MapPanel(context: Context) {
                     PropertyFactory.lineWidth(5f),
                     PropertyFactory.lineCap("round"),
                     PropertyFactory.lineJoin("round"),
+                ),
+            )
+        }
+        if (style.getSource(SOURCE_DESTINATION) == null) {
+            style.addSource(org.maplibre.android.style.sources.GeoJsonSource(SOURCE_DESTINATION))
+            style.addLayer(
+                CircleLayer(LAYER_DESTINATION, SOURCE_DESTINATION).withProperties(
+                    PropertyFactory.circleRadius(9f),
+                    PropertyFactory.circleColor(DESTINATION_COLOR),
+                    PropertyFactory.circleStrokeWidth(3f),
+                    PropertyFactory.circleStrokeColor(Color.WHITE),
                 ),
             )
         }
@@ -132,6 +165,30 @@ class MapPanel(context: Context) {
                 ),
             )
         }
+    }
+
+    /** Rysuje wyznaczoną trasę wraz z punktem docelowym. */
+    fun showRoute(geometry: List<pl.reactivebike.routing.GeoPoint>, destination: pl.reactivebike.routing.GeoPoint?) {
+        val style = map?.style ?: return
+
+        if (geometry.size >= 2) {
+            val points = geometry.map { Point.fromLngLat(it.longitude, it.latitude) }
+            (style.getSource(SOURCE_ROUTE) as? org.maplibre.android.style.sources.GeoJsonSource)
+                ?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(points)))
+        }
+
+        destination?.let {
+            (style.getSource(SOURCE_DESTINATION) as? org.maplibre.android.style.sources.GeoJsonSource)
+                ?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)))
+        }
+    }
+
+    /** Zdejmuje trasę i punkt docelowy z mapy. */
+    fun clearRoute() {
+        val style = map?.style ?: return
+        val empty = FeatureCollection.fromFeatures(emptyList())
+        (style.getSource(SOURCE_ROUTE) as? org.maplibre.android.style.sources.GeoJsonSource)?.setGeoJson(empty)
+        (style.getSource(SOURCE_DESTINATION) as? org.maplibre.android.style.sources.GeoJsonSource)?.setGeoJson(empty)
     }
 
     /** Dokłada odczyt pozycji do śladu i przesuwa kamerę, o ile użytkownik jej nie przejął. */
@@ -195,6 +252,10 @@ class MapPanel(context: Context) {
 
         const val SOURCE_POSITION = "rb-position-source"
         const val LAYER_POSITION = "rb-position-layer"
+        const val SOURCE_ROUTE = "rb-route-source"
+        const val LAYER_ROUTE = "rb-route-layer"
+        const val SOURCE_DESTINATION = "rb-destination-source"
+        const val LAYER_DESTINATION = "rb-destination-layer"
         const val SOURCE_TRACK = "rb-track-source"
         const val LAYER_TRACK = "rb-track-layer"
 
@@ -207,6 +268,8 @@ class MapPanel(context: Context) {
         const val MAX_TRACK_POINTS = 2_000
 
         val POSITION_COLOR = Color.parseColor("#2563EB")
+        val ROUTE_COLOR = Color.parseColor("#7C3AED")
+        val DESTINATION_COLOR = Color.parseColor("#DC2626")
         val TRACK_COLOR = Color.parseColor("#F97316")
     }
 }
