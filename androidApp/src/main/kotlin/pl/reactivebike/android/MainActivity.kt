@@ -191,6 +191,11 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.searchStartButton.setOnClickListener { searchPlace(asStart = true) }
         dashboard.navigationButton.setOnClickListener { toggleNavigation() }
         setUpSearchField()
+
+        // Pozycje z usługi wchodzą tą samą drogą co z odbiornika w aktywności, więc reszta
+        // logiki nie musi wiedzieć, które źródło akurat pracuje.
+        NavigationService.onLocation = { location -> handler.post { onLocationChanged(location) } }
+        NavigationService.onStopRequested = { handler.post { stopNavigation("Nawigacja zakończona.") } }
         dashboard.voiceButton.setOnClickListener { toggleVoice() }
         restoreVoicePreference()
 
@@ -241,6 +246,18 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         mapPanel?.onStop()
         // Ekran wygaszony albo aplikacja w tle — dla maszyny stanów to warunek wejścia w SLEEP.
         screenOn = false
+
+        // W trakcie jazdy nie rozbieramy stanu. Pozycje płyną z usługi pierwszoplanowej,
+        // a pętla odświeżania musi dalej chodzić, bo to ona przelicza stan GPS i utrzymuje
+        // treść powiadomienia. Poza jazdą zwalniamy wszystko, jak dotąd.
+        if (phase.isGuiding) {
+            // Czujniki zdejmujemy mimo wszystko: barometr i akcelerometr nie są potrzebne
+            // do prowadzenia, a przy zgaszonym ekranie system i tak je ogranicza.
+            // Konsekwencja: Storm Mode nie aktualizuje się w kieszeni — do poprawy.
+            sensorManager?.unregisterListener(this)
+            return
+        }
+
         handler.removeCallbacks(ticker)
         sensorManager?.unregisterListener(this)
         stopLocationUpdates()
@@ -258,6 +275,10 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Wskaźniki w usłudze są statyczne, więc bez wyzerowania trzymałyby zniszczoną
+        // aktywność przy życiu przez cały przejazd.
+        NavigationService.onLocation = null
+        NavigationService.onStopRequested = null
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         scope.cancel()
@@ -667,13 +688,30 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             return
         }
 
+        // Bez zgody na powiadomienia usługa pierwszoplanowa wystartuje, ale użytkownik
+        // nie zobaczy ani manewru, ani przycisku „Zakończ".
+        requestNotificationPermissionIfNeeded()
+
         phase = NavigationPhase.NAVIGATING
         announcer.reset()
         offRouteDetector.reset()
         dismissKeyboard()
         mapPanel?.recenter()
+
+        // Od tej chwili pozycje przychodzą z usługi, dzięki czemu nawigacja przeżywa
+        // zgaszenie ekranu — bez niej `onStop` zdejmowało nasłuch i przejazd się kończył.
+        stopLocationUpdates()
+        NavigationService.start(this, gpsState.samplingIntervalSeconds)
+
         speak("Nawigacja rozpoczęta.")
         render()
+    }
+
+    /** Od Androida 13 powiadomienia wymagają zgody; bez niej przejazd byłby niewidoczny w tle. */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
     }
 
     private fun stopNavigation(spoken: String?) {
@@ -681,6 +719,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         phase = NavigationPhase.PLANNING
         announcer.reset()
         offRouteDetector.reset()
+        NavigationService.stop(this)
+        // Aktywność przejmuje nasłuch z powrotem, o ile w ogóle jest widoczna.
+        applyLocationUpdates()
         spoken?.let { speak(it) }
         render()
     }
@@ -812,6 +853,32 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         )
 
         renderRouteProgress(route, progress)
+        updateNavigationNotification(route, progress)
+    }
+
+    /**
+     * Przenosi najbliższy manewr i dystans do celu do powiadomienia.
+     *
+     * To jedyny widok trasy, gdy telefon leży w kieszeni — bez tego usługa pierwszoplanowa
+     * pokazywałaby, że coś działa, nie mówiąc co.
+     */
+    private fun updateNavigationNotification(route: Route, progress: RouteProgress?) {
+        if (!phase.isGuiding) return
+
+        val title = progress?.nextManeuver?.let { maneuver ->
+            val distance = progress.distanceToNextManeuverMeters
+                ?.let { " za ${formatDistance(it)}" }
+                .orEmpty()
+            "${maneuver.instruction}$distance"
+        } ?: "Jedź dalej"
+
+        val remaining = progress?.remainingDistanceMeters ?: route.distanceMeters
+        val eta = progress
+            ?.let { RouteEta.estimate(route, it, currentSpeedMetersPerSecond()).remainingDurationSeconds }
+            ?.let { ", ok. ${formatDuration(it)}" }
+            .orEmpty()
+
+        NavigationNotification.update(this, title, "Do celu ${formatDistance(remaining)}$eta")
     }
 
     /**
@@ -943,6 +1010,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             phase = NavigationPhase.ARRIVED
             announcer.reset()
             offRouteDetector.reset()
+            NavigationService.stop(this)
+            applyLocationUpdates()
             speak("Dojechałeś do celu.")
             render()
             return
@@ -973,6 +1042,16 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         if (!hasLocationPermission()) return
 
         val interval = gpsState.samplingIntervalSeconds
+
+        // W trakcie jazdy subskrypcję trzyma usługa pierwszoplanowa, nie aktywność.
+        // Dublowanie nasłuchu podwajałoby pracę odbiornika, a przy wygaszonym ekranie
+        // subskrypcja aktywności i tak byłaby przez system ograniczana.
+        if (phase.isGuiding) {
+            stopLocationUpdates()
+            NavigationService.updateInterval(interval)
+            return
+        }
+
         if (interval == null) {
             stopLocationUpdates()
             return
@@ -1418,6 +1497,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     private companion object {
         const val REQUEST_LOCATION = 1
+        const val REQUEST_NOTIFICATIONS = 2
 
         /** Ustawienia przeżywające zamknięcie aplikacji. */
         const val PREFERENCES = "reactivebike"

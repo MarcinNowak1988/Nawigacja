@@ -7,6 +7,14 @@
          objawiałby się dopiero błędem połączenia, zamiast czytelnym komunikatem. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Nawigacja musi działać przy wygaszonym ekranie: rower to dokładnie ten przypadek,
+         w którym telefon leży w kieszeni, a prowadzi głos. Typ `location` jest od Androida 14
+         obowiązkowy, a od Androida 10 to właśnie działająca usługa tego typu daje dostęp
+         do lokalizacji poza pierwszym planem. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -35,6 +43,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".NavigationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

@@ -13,7 +13,8 @@ prędkością, ciśnieniem i Storm Mode. Powody i koszty tej decyzji opisuje
 
 > **Status: alfa.** Aplikacja androidowa jeździ: mapa, pozycja, ślad przejazdu,
 > nawigacja z punktu A do B z punktami pośrednimi wskazywanymi na mapie albo przez
-> wyszukiwanie tekstowe, dane postępu, wybór rodzaju roweru, zapowiedzi
+> wyszukiwanie tekstowe, prowadzenie w tle przy wygaszonym ekranie, dane postępu,
+> wybór rodzaju roweru, zapowiedzi
 > manewrów głosem, pogoda i zapisywanie regionów mapy.
 > Modułu iOS ani modułu AI z sekcji 6 jeszcze nie ma.
 
@@ -110,7 +111,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.11.0 && git push origin v0.11.0
+git tag v0.12.0 && git push origin v0.12.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**

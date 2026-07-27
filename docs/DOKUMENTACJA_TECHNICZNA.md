@@ -154,6 +154,12 @@ Wyznaczenie trasy i jazda nią to **dwa różne etapy** (`NavigationPhase`). Dop
 
 Rozdzielenie ma też **bezpośredni skutek dla baterii**. Odległość do najbliższego manewru jest jedynym wejściem, które wprowadza maszynę stanów z sekcji 7 w `CRITICAL` (odpytywanie co sekundę). Podajemy ją wyłącznie w trakcie jazdy — wcześniej sama wyznaczona trasa trzymała odbiornik w najkosztowniejszym trybie, choć rowerzysta stał i wybierał punkty. To było dokładne przeciwieństwo tego, po co ta maszyna stanów istnieje.
 
+Jazda toczy się w **usłudze pierwszoplanowej**. To nie jest szczegół implementacyjny, tylko warunek działania produktu: wcześniej `onStop` aktywności zdejmowało nasłuch GPS, więc zgaszenie ekranu kończyło nawigację — a rower to dokładnie ten przypadek, w którym telefon leży w kieszeni, a prowadzi głos. Subskrypcję lokalizacji trzyma **usługa, nie aktywność**: od Androida 10 dostęp do lokalizacji poza pierwszym planem jest ograniczany, a wyjątek daje właśnie działająca usługa typu `location` (od Androida 14 zadeklarowanie tego typu jest obowiązkowe). Powiadomienie niesie najbliższy manewr i dystans do celu, bo przy telefonie w kieszeni jest to jedyny widok trasy.
+
+To dopiero czyni stan `SLEEP` z sekcji 7 osiągalnym. Wcześniej opisywał on oszczędność baterii przy wygaszonym ekranie w sytuacji, w której przy wygaszonym ekranie nie było żadnej nawigacji.
+
+**Znane ograniczenie:** czujniki (barometr, akcelerometr) są przy wygaszonym ekranie zwalniane, więc Storm Mode z sekcji 8 nie aktualizuje się w kieszeni. Do poprawy razem z przeniesieniem pomiarów do usługi.
+
 Nawigacja kończy się na dwa sposoby: przyciskiem albo dojazdem do celu. Dojazd wykrywamy po **pozostałym dystansie wzdłuż trasy** (`ArrivalDetector`, 35 m), a nie po odległości w linii prostej od celu — ktoś jadący równolegle do końcówki trasy zostałby inaczej uznany za przybyłego, zanim dojedzie.
 
 ### 5.0.2 Dane postępu
