@@ -29,7 +29,13 @@ val brouterModules = listOf(
 
 sourceSets {
     named("main") {
-        java.setSrcDirs(brouterModules.map { rootProject.file("third_party/brouter/$it/src/main/java") })
+        // Do źródeł BRoutera dokładamy własny katalog: mieszka w nim `BRouterHints`,
+        // który sięga po pakietowo-prywatne pola podpowiedzi nawigacyjnych. Trzymamy go
+        // po naszej stronie, żeby aktualizacja podmodułu go nie nadpisała.
+        java.setSrcDirs(
+            brouterModules.map { rootProject.file("third_party/brouter/$it/src/main/java") } +
+                listOf(file("src/main/java")),
+        )
         resources.setSrcDirs(brouterModules.map { rootProject.file("third_party/brouter/$it/src/main/resources") })
     }
     // Testy BRoutera zostają u nich. Nasze zadanie to dostarczyć bibliotekę, a ich zestaw
