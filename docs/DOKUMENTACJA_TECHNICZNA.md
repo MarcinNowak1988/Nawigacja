@@ -1,7 +1,8 @@
 # ReactiveBike — Dokumentacja Techniczna Systemu
-**Nawigacja Rowerowa Offline-First**
+**Nawigacja Rowerowa Online z Zapisywanymi Regionami Mapy**
+*(do wersji 1.2: „Nawigacja Rowerowa Offline-First” — patrz [ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md))*
 
-- **Wersja dokumentu:** 1.2
+- **Wersja dokumentu:** 2.0
 - **Data:** 26 lipca 2026
 - **Status:** Specyfikacja systemu (draft)
 - **Zakres:** Architektura, logika trasowania, moduł AI, zarządzanie baterią, tryb offline, prywatność
@@ -13,6 +14,11 @@
 > **Zmiany w wersji 1.2.** Doprecyzowano sekcję 8: ważność bufora pogodowego liczona jest
 > od wydania prognozy, a barometr nasłuchiwany jest równolegle z buforem, nie po jego
 > wygaśnięciu ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)).
+>
+> **Zmiany w wersji 2.0 — zmiana kierunku produktu.** ReactiveBike jest **aplikacją online**.
+> Wyznaczanie trasy wymaga sieci; tryb offline zawęża się do zapisanych regionów mapy.
+> Oznacza to rezygnację z jednego z czterech filarów z sekcji 2 i wpływa na sekcje 5, 8 i 9.
+> Uzasadnienie i koszty: [ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md).
 
 ---
 
@@ -25,7 +31,7 @@
 5. Logika Trasowania (Routing Engine)
 6. Moduł AI — Tłumacz Warunków Pogodowych na Wagi
 7. Zarządzanie Baterią — GPS State Machine
-8. Architektura Offline-First (Graceful Degradation)
+8. Zachowanie bez zasięgu (Graceful Degradation)
 9. Prywatność i Bezpieczeństwo Danych
 10. Słownik Pojęć
 11. Otwarte Kwestie i Dalsze Kroki
@@ -34,19 +40,22 @@
 
 ## 1. Wprowadzenie
 
-Niniejszy dokument stanowi specyfikację techniczną aplikacji **ReactiveBike** — mobilnej nawigacji rowerowej zaprojektowanej w modelu *offline-first*. Opisuje architekturę systemu, logikę wyznaczania tras, mechanizm adaptacji do warunków pogodowych oparty o AI, strategię zarządzania energią urządzenia oraz zachowanie aplikacji przy utracie łączności sieciowej.
+Niniejszy dokument stanowi specyfikację techniczną aplikacji **ReactiveBike** — mobilnej nawigacji rowerowej działającej **w modelu online**, z możliwością zapisania regionów mapy do użytku bez zasięgu. Opisuje architekturę systemu, logikę wyznaczania tras, mechanizm adaptacji do warunków pogodowych oparty o AI, strategię zarządzania energią urządzenia oraz zachowanie aplikacji przy utracie łączności sieciowej.
 
 Odbiorcą dokumentu jest zespół deweloperski (Android / iOS) oraz osoby odpowiedzialne za decyzje architektoniczne i produktowe. Dokument bazuje na dostarczonej specyfikacji systemowej i rozszerza ją o strukturę, diagramy oraz doprecyzowanie kwestii prywatności.
 
 ## 2. Założenia Systemu i Kluczowe Wyróżniki
 
-ReactiveBike odróżnia się od typowych aplikacji do nawigacji rowerowej czterema filarami:
+ReactiveBike odróżnia się od typowych aplikacji do nawigacji rowerowej trzema filarami.
+Czwarty — pełny tryb offline — został wycofany w wersji 2.0 dokumentu; powód opisuje
+[ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md), a jego ślad zostawiono
+w tabeli, żeby nie zgubić informacji o tym, czym produkt miał być:
 
 | Wyróżnik | Opis |
 |---|---|
 | **Brak funkcji społecznościowych** | Świadoma decyzja produktowa — bez feedu, profili publicznych, udostępniania tras czy rankingów. |
 | **Prywatność** | Minimalizacja danych opuszczających urządzenie — szczegóły w sekcji 9. |
-| **Pełny tryb offline** | Aplikacja musi zachować pełną funkcjonalność w terenie bez zasięgu (lasy, góry). |
+| **~~Pełny tryb offline~~** | **Wycofany w wersji 2.0.** Wyznaczanie trasy wymaga sieci. Bez zasięgu działa mapa z zapisanego regionu, pozycja, prędkość, ciśnienie i Storm Mode — ale nie nawigacja ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). |
 | **Inteligentne omijanie warunków** | Silnik AI + Cost Function dynamicznie modyfikują trasę na podstawie pogody i terenu. |
 
 ## 3. Stos Technologiczny
@@ -56,12 +65,12 @@ ReactiveBike odróżnia się od typowych aplikacji do nawigacji rowerowej cztere
 | Architektura współdzielona | Kotlin Multiplatform (KMP) | Wspólna logika biznesowa dla Android i iOS przy zachowaniu natywnego UI |
 | UI — Android | Jetpack Compose | Natywny interfejs użytkownika |
 | UI — iOS | SwiftUI | Natywny interfejs użytkownika |
-| Silnik mapy | MapLibre GL Native | Renderowanie map wektorowych, obsługa plików `.mbtiles` offline ([ADR-0003](adr/0003-offline-mbtiles.md)) |
-| Silnik trasowania | GraphHopper (Android) | Wyznaczanie tras lokalnie, osadzony na urządzeniu. **Warstwa per-platforma, nie wspólna** — silnik dla iOS pozostaje otwarty ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)) |
+| Silnik mapy | MapLibre GL Native | Renderowanie map wektorowych; regiony offline przez `OfflineManager` ([ADR-0006](adr/0006-mapy-offline-przez-offlinemanager.md)), a nie pliki `.mbtiles` z [ADR-0003](adr/0003-offline-mbtiles.md) |
+| Silnik trasowania | Usługa sieciowa (Valhalla) | Wyznaczanie tras **wymaga połączenia** ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). Ukryty za portem `RouteEngine`, więc pozostaje wymienialny ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)) |
 | Warstwa sieciowa | Ktor | Komunikacja z Open-Meteo i modelem AI |
 | Baza danych | SQLDelight | Lokalny bufor map, tras i prognoz pogody |
 
-> **Kluczowa decyzja architektoniczna:** silnik map i silnik trasowania działają w całości lokalnie na urządzeniu — to fundament trybu offline-first (sekcja 8) i jednocześnie jeden z filarów prywatności (sekcja 9).
+> **Kluczowa decyzja architektoniczna (nieaktualna od wersji 2.0).** Pierwotnie zakładano, że silnik map i silnik trasowania działają w całości lokalnie. Lokalnie działa dziś wyłącznie **renderowanie mapy**; trasowanie wymaga sieci ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)), co osłabia zarówno tryb offline z sekcji 8, jak i argument o prywatności z sekcji 9.
 
 > **Korekta 1.1.** GraphHopper jest biblioteką Javy i nie uruchomi się na iOS, więc silnik trasowania **nie jest kodem wspólnym KMP**. Warstwa wspólna posiada model kosztu jako dane (`RoutingWeights`), a wiązanie z silnikiem należy do warstwy natywnej. Pierwszą wydawaną platformą jest Android. Pełne uzasadnienie i odrzucone alternatywy: [ADR-0001](adr/0001-silnik-trasowania-per-platforma.md).
 
@@ -82,12 +91,14 @@ graph TD
         B3[Ktor – warstwa sieciowa]
     end
     subgraph NAT["Warstwa per-platforma"]
-        B1[Routing Engine – GraphHopper na Androidzie]
-        C1[MapLibre GL Native + pliki .mbtiles]
+        B1[Klient silnika trasowania – RouteEngine]
+        C1[MapLibre GL Native + zapisane regiony]
     end
     subgraph EXT["Usługi zewnętrzne (online)"]
+        D0[Silnik trasowania – Valhalla]
         D1[Open-Meteo API]
         D2[Model AI]
+        D3[Serwer kafelków mapy]
     end
 
     A1 --> B0
@@ -95,7 +106,10 @@ graph TD
     A1 --> C1
     A2 --> C1
     B0 --> B1
+    B1 --> D0
+    D0 --> B1
     B1 --> C1
+    C1 --> D3
     B4 --> B0
     B3 --> D1
     B3 --> D2
@@ -105,11 +119,15 @@ graph TD
     B2 --> B4
 ```
 
-Logika biznesowa — model kosztu, baza danych, warstwa sieciowa i moduł AI — jest współdzielona pomiędzy platformami dzięki KMP. Natywna jest warstwa prezentacji oraz, zgodnie z [ADR-0001](adr/0001-silnik-trasowania-per-platforma.md), samo wiązanie z silnikiem trasowania i silnikiem mapy. Granica jest wąska i jawna: warstwa wspólna oddaje wagi jako dane, warstwa natywna tłumaczy je na format swojego silnika. Usługi zewnętrzne (Open-Meteo, model AI) są jedynymi punktami systemu wymagającymi aktywnego połączenia sieciowego.
+Logika biznesowa — model kosztu, baza danych, warstwa sieciowa i moduł AI — jest współdzielona pomiędzy platformami dzięki KMP. Natywna jest warstwa prezentacji oraz, zgodnie z [ADR-0001](adr/0001-silnik-trasowania-per-platforma.md), samo wiązanie z silnikiem trasowania i silnikiem mapy. Granica jest wąska i jawna: warstwa wspólna oddaje wagi jako dane, warstwa natywna tłumaczy je na format swojego silnika.
+
+> **Korekta 2.0.** Wcześniej stało tu, że usługi zewnętrzne są jedynymi punktami wymagającymi połączenia. **Sieci wymaga też wyznaczenie trasy oraz pobranie kafelków mapy spoza zapisanego regionu** ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). Lokalnie działa samo renderowanie tego, co już jest na urządzeniu.
 
 ## 5. Logika Trasowania (Routing Engine)
 
-Trasy są wyliczane **lokalnie** poprzez modyfikację wag krawędzi grafu OpenStreetMap wewnątrz silnika trasowania — na Androidzie jest nim GraphHopper, w którym mechanizmem nadpisywania wag w czasie działania są custom models.
+Trasy są wyliczane przez **usługę sieciową** ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)) na podstawie grafu OpenStreetMap.
+
+> **Ograniczenie modelu wag.** Silnik serwerowy przyjmuje kilka parametrów profilu rowerowego zamiast dowolnych mnożników per nawierzchnia. Aplikacja **liczy pełny model z sekcji 5.1 i pokazuje go użytkownikowi**, ale do routera trafia jego przybliżenie — intencja („unikaj kiepskich nawierzchni”) zamiast konkretnych wag. Pełny model wróciłby dopiero z silnikiem na urządzeniu.
 
 Wzór kosztu i semantyka wag należą do warstwy wspólnej (`shared`, pakiet `routing`) i są niezależne od silnika; warstwa natywna tłumaczy je na format konkretnego silnika ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)).
 
@@ -262,13 +280,16 @@ Ze stanu `CRITICAL` prowadzi jedno wyjście — do `CRUISE` po wykonaniu manewru
 
 Maszyna jest zaimplementowana jako czysta funkcja przejścia w `shared/src/commonMain/kotlin/pl/reactivebike/gps/GpsStateMachine.kt` — bez zegara i bez dostępu do sprzętu, co pozwala pokryć testami każde przejście z powyższego diagramu.
 
-## 8. Architektura Offline-First (Graceful Degradation)
+## 8. Zachowanie bez zasięgu (Graceful Degradation)
 
-Gdy urządzenie traci zasięg sieci komórkowej, system przechodzi przez zdefiniowaną sekwencję degradacji, zachowując maksimum funkcjonalności.
+> **Zakres zawężony w wersji 2.0.** Bez zasięgu **nie wyznaczymy nowej trasy** — to funkcja sieciowa. Działa mapa z zapisanego regionu, pozycja, prędkość, ciśnienie i Storm Mode ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)).
+
+Gdy urządzenie traci zasięg sieci komórkowej, system przechodzi przez zdefiniowaną sekwencję degradacji, zachowując maksimum pozostałej funkcjonalności.
 
 ```mermaid
 flowchart TD
-    A[Utrata zasięgu sieci] --> B[Zbuforowane mapy wektorowe + lokalny silnik trasowania]
+    A[Utrata zasięgu sieci] --> B[Zapisany region mapy: podgląd, pozycja, prędkość]
+    A --> R[Wyznaczanie trasy niedostępne — komunikat dla użytkownika]
     A --> E[Nasłuch natywnego barometru]
 
     B --> D{Bufor pogodowy wciąż ważny?}
@@ -283,7 +304,9 @@ flowchart TD
     G -.->|ma pierwszeństwo przed| H
 ```
 
-1. **Mapa i trasowanie** — aplikacja korzysta wyłącznie ze zbuforowanych map wektorowych (`.mbtiles`) oraz lokalnej instancji silnika trasowania — brak przerwy w nawigacji. MapLibre obsługuje pliki `.mbtiles` przez schemat `mbtiles://`, ale **jedno źródło w stylu mapy obsługuje dokładnie jeden plik**, a na Androidzie pliku nie można wskazać w `assets/` — musi zostać skopiowany do pamięci wewnętrznej. Konsekwencje dla pobierania wielu regionów opisuje [ADR-0003](adr/0003-offline-mbtiles.md).
+1. **Mapa — tak, trasowanie — nie.** Aplikacja wyświetla zapisany wcześniej region mapy wraz z pozycją, prędkością i śladem przejazdu. Regiony zapisuje `OfflineManager` MapLibre we własnej bazie na urządzeniu ([ADR-0006](adr/0006-mapy-offline-przez-offlinemanager.md)), a nie pliki `.mbtiles` z [ADR-0003](adr/0003-offline-mbtiles.md). **Nowej trasy w tym stanie nie wyznaczymy** — silnik jest sieciowy ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). Aplikacja mówi o tym wprost, zamiast pokazywać błąd połączenia; trasa wyznaczona wcześniej pozostaje na ekranie i dalej jest śledzona.
+
+   Ponieważ zapisane regiony są **jedynym** mechanizmem trybu offline, koszt pobrania musi być widoczny **przed** jego uruchomieniem: aplikacja pokazuje szacowany rozmiar widocznego obszaru i pyta o potwierdzenie, gdy obszar jest duży. Liczenie kafelków jest wspólne dla platform (`OfflineRegionEstimator`); rozmiar w megabajtach jest oszacowaniem rzędu wielkości, bo kafelki wektorowe miasta i lasu różnią się wielokrotnie.
 2. **Pogoda (do 2h)** — zamiast zapytań do API wykorzystywana jest ostatnia zbuforowana prognoza pogody. **Ważność liczy się od momentu wydania prognozy, nie od utraty zasięgu** — inaczej prognoza sprzed pięciu godzin dostawałaby świeży dwugodzinny kredyt zaufania w chwili wjazdu w las. Buforowane są wagi, a nie surowe dane pogodowe: model AI tłumaczący pogodę na wagi też jest usługą sieciową, więc offline niedostępne są oba.
 3. **Storm Mode — nasłuch równoległy, nie następczy** — barometr jest nasłuchiwany **od chwili utraty zasięgu**, równolegle z korzystaniem z bufora, a nie dopiero po jego wygaśnięciu ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)). Gwałtowny spadek ciśnienia (> 2 hPa w oknie 3 godzin) aktywuje tryb ucieczki przed burzą, który — zgodnie z logiką z sekcji 5 — podnosi wagi odstraszające dla nawierzchni podatnych na rozmoknięcie.
 
@@ -307,7 +330,7 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 
 ### 9.1 Co architektura zapewnia już dziś
 
-- **Trasowanie lokalne** — GraphHopper działa on-device, więc obliczenia trasy nie wymagają wysyłania lokalizacji użytkownika na serwer.
+- **~~Trasowanie lokalne~~ — nieaktualne od wersji 2.0.** Wyznaczanie trasy odbywa się w usłudze sieciowej, więc **punkt startowy i cel opuszczają urządzenie** przy każdym zapytaniu. To realne osłabienie filaru prywatności i wymaga decyzji: czy i jak informować o tym użytkownika oraz czy zapytania anonimizować ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)).
 - **Brak warstwy społecznościowej** — brak kont publicznych, udostępniania tras czy telemetrii porównawczej między użytkownikami eliminuje całą klasę ryzyk związanych z prywatnością lokalizacji.
 - **Lokalny bufor danych** — SQLDelight przechowuje mapy, trasy i prognozy pogody na urządzeniu, nie w chmurze.
 - **Ograniczony zakres komunikacji sieciowej** — jedyne zewnętrzne wywołania to Open-Meteo (pogoda) i model AI (tłumaczenie wag) — brak stałego trackingu pozycji wysyłanego w tle na serwer.
@@ -332,21 +355,25 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 
 ## 11. Otwarte Kwestie i Dalsze Kroki
 
-### 11.1 Rozstrzygnięte w wersji 1.1
+### 11.1 Rozstrzygnięte
 
 | Kwestia | Rozstrzygnięcie |
 |---|---|
-| Strategia walidacji odpowiedzi modelu AI | Sekcja 6.4 — ścisła walidacja z normalizacją wag, pokryta testami |
-| Zachowanie przy błędzie/timeoucie zapytania do modelu AI | Sekcja 6.4 — fallback na wagi domyślne, nawigacja jedzie dalej |
-| Utrzymanie i wersjonowanie dokumentu | Decyzje architektoniczne trafiają do [ADR-ów](adr/README.md); dokument dostaje odsyłacze zamiast przepisywania historii |
-| Moment, od którego liczy się ważność bufora pogodowego | Sekcja 8 — od wydania prognozy, nie od utraty zasięgu |
-| Kolejność nasłuchu barometru względem bufora | Sekcja 8.1 — równolegle, z pierwszeństwem dla bieżącego pomiaru ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)) |
-| Okno czasowe dla progu spadku ciśnienia | Sekcja 8.1 — 3 godziny, konfigurowalne, do weryfikacji na realnych przejazdach |
+| Komunikat o braku sieci | Sekcja 8 — aplikacja sprawdza połączenie przed zapytaniem i mówi wprost, że trasowanie wymaga zasięgu, zamiast pokazywać błąd połączenia *(2.0)* |
+| Ostrzeżenie o rozmiarze regionu przed pobraniem | Sekcja 8 — szacowany rozmiar widocznego obszaru na pulpicie, potwierdzenie przy dużym obszarze *(2.0)* |
+| Strategia walidacji odpowiedzi modelu AI | Sekcja 6.4 — ścisła walidacja z normalizacją wag, pokryta testami *(1.1)* |
+| Zachowanie przy błędzie/timeoucie zapytania do modelu AI | Sekcja 6.4 — fallback na wagi domyślne, nawigacja jedzie dalej *(1.1)* |
+| Utrzymanie i wersjonowanie dokumentu | Decyzje architektoniczne trafiają do [ADR-ów](adr/README.md); dokument dostaje odsyłacze zamiast przepisywania historii *(1.1)* |
+| Moment, od którego liczy się ważność bufora pogodowego | Sekcja 8 — od wydania prognozy, nie od utraty zasięgu *(1.1)* |
+| Kolejność nasłuchu barometru względem bufora | Sekcja 8.1 — równolegle, z pierwszeństwem dla bieżącego pomiaru ([ADR-0005](adr/0005-barometr-nasluchiwany-rownolegle.md)) *(1.1)* |
+| Okno czasowe dla progu spadku ciśnienia | Sekcja 8.1 — 3 godziny, konfigurowalne, do weryfikacji na realnych przejazdach *(1.1)* |
 
 ### 11.2 Wciąż otwarte
 
-- **Silnik trasowania dla iOS.** [ADR-0001](adr/0001-silnik-trasowania-per-platforma.md) rozstrzyga Androida i odkłada iOS. Najpoważniejszym kandydatem jest Valhalla, wymaga jednak własnych artefaktów mobilnych i rozwiązania kwestii runtime'owych mnożników wag.
-- **Pomiar kosztu speedupu Landmarks.** Jeśli wyznaczanie trasy bez LM okaże się dostatecznie szybkie na realnych dystansach rowerowych, ograniczenie z [ADR-0002](adr/0002-model-wag-tylko-podwyzszajacy.md) można znieść, a model wag uprościć.
+- **Zakres danych wysyłanych do usługi trasowania.** Po [ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md) punkt startowy i cel opuszczają urządzenie. Do rozstrzygnięcia: czy korzystać z instancji publicznej czy własnej, czy zapytania anonimizować i jak poinformować o tym użytkownika.
+- **Zarządzanie zapisanymi regionami.** Nazywanie, lista i usuwanie pojedynczych regionów — dziś jest jeden przycisk „Usuń", kasujący wszystko. Po ADR-0007 to jedyny mechanizm trybu offline, więc jego jakość przestała być drugorzędna.
+- **Trafność oszacowania rozmiaru regionu.** Liczba kafelków jest policzona dokładnie, ale przelicznik na megabajty (`AVERAGE_TILE_BYTES`) przyjęto z rozsądku, a styl z własnym `maxzoom` pobiera mniej plików, niż wynika z siatki. Do skorygowania na podstawie realnych pobrań.
+- **Pełny model wag** wróci dopiero z silnikiem na urządzeniu; dziś router przyjmuje przybliżenie (sekcja 5).
 - **Proces aktualizacji lokalnych map `.mbtiles`** — częstotliwość, rozmiar pobrań, wersjonowanie danych OSM. [ADR-0003](adr/0003-offline-mbtiles.md) ustala podział „jeden region = jeden plik", ale nie opisuje cyklu aktualizacji.
 - **Próg czułości akcelerometru** dla wykrywania bezruchu ([ADR-0004](adr/0004-warunek-wejscia-w-stan-stationary.md)) — do ustalenia przy implementacji natywnej, wraz z zachowaniem przy roweru stojącym na wietrze.
 - **Dostrojenie wag Storm Mode** — obecne wartości w `StormMode.weights` są punktem wyjścia przyjętym z rozsądku, nie wynikiem pomiarów. Wymagają weryfikacji na realnych przejazdach w deszczu.
@@ -356,4 +383,4 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 
 ---
 
-*Dokument bazuje na specyfikacji systemowej ReactiveBike i został rozszerzony o strukturę, diagramy oraz sekcję prywatności w celu ułatwienia wdrożenia zespołowi deweloperskiemu. Wersja 1.1 koryguje założenia sekcji 3–5, 7 i 8 po weryfikacji wobec dokumentacji GraphHoppera i MapLibre — uzasadnienia w [ADR-ach](adr/README.md).*
+*Dokument bazuje na specyfikacji systemowej ReactiveBike i został rozszerzony o strukturę, diagramy oraz sekcję prywatności w celu ułatwienia wdrożenia zespołowi deweloperskiemu. Wersja 1.1 koryguje założenia sekcji 3–5, 7 i 8 po weryfikacji wobec dokumentacji GraphHoppera i MapLibre. Wersja 2.0 zmienia kierunek produktu na aplikację online z zapisywanymi regionami mapy i koryguje sekcje 1–5, 8, 9 i 11 — uzasadnienia w [ADR-ach](adr/README.md).*

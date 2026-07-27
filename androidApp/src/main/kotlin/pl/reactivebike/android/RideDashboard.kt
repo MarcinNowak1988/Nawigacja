@@ -152,8 +152,11 @@ class RideDashboard(private val context: Context) {
 
         column.addView(
             TextView(context).apply {
-                text = "Przytrzymaj palec na mapie, żeby wyznaczyć trasę. Trasowanie działa " +
-                    "przez sieć — wersja offline dopiero powstaje."
+                // ADR-0007 mówi wprost, że tego nie wolno przemilczeć: bez zasięgu zostaje
+                // mapa z komputerem rowerowym, a nie nawigacja.
+                text = "Przytrzymaj palec na mapie, żeby wyznaczyć trasę. Wyznaczanie trasy " +
+                    "wymaga zasięgu. Pobrany obszar wyświetli się bez sieci — razem " +
+                    "z pozycją, prędkością i ciśnieniem — ale trasy w nim nie wyznaczysz."
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTextColor(MUTED)
                 setPadding(dp(4), dp(14), dp(4), 0)
@@ -200,7 +203,10 @@ class RideDashboard(private val context: Context) {
 
     /** Karta map offline — pobieranie jest czynnością użytkownika, więc ma własne akcje. */
     private fun offlineCard(): LinearLayout {
-        val container = card("Mapa offline", listOf(KEY_OFFLINE_STATUS, KEY_OFFLINE_DETAIL))
+        val container = card(
+            "Mapa offline",
+            listOf(KEY_OFFLINE_STATUS, KEY_OFFLINE_DETAIL, KEY_OFFLINE_ESTIMATE),
+        )
 
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -294,6 +300,7 @@ class RideDashboard(private val context: Context) {
 
         const val KEY_OFFLINE_STATUS = "offlineStatus"
         const val KEY_OFFLINE_DETAIL = "offlineDetail"
+        const val KEY_OFFLINE_ESTIMATE = "offlineEstimate"
 
         const val KEY_WEIGHTS_SOURCE = "weightsSource"
         const val KEY_WEIGHTS_REASON = "weightsReason"

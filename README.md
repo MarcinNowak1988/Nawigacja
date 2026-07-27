@@ -2,15 +2,18 @@
 
 [![Build](https://github.com/MarcinNowak1988/Nawigacja/actions/workflows/build.yml/badge.svg)](https://github.com/MarcinNowak1988/Nawigacja/actions/workflows/build.yml)
 
-Nawigacja rowerowa w modelu **offline-first**, projektowana z założeniem, że w lesie
-i w górach aplikacja ma działać tak samo dobrze jak w mieście z pełnym zasięgiem.
+Nawigacja rowerowa **działająca online**, z możliwością zapisania regionu mapy
+do użytku bez zasięgu.
 
-Cztery filary produktu: brak funkcji społecznościowych, prywatność, pełny tryb offline
-oraz adaptacja trasy do warunków pogodowych.
+Trzy filary produktu: brak funkcji społecznościowych, prywatność oraz adaptacja trasy
+do warunków pogodowych. Czwarty — pełny tryb offline — został wycofany; **wyznaczanie
+trasy wymaga sieci**, a bez zasięgu zostaje mapa z zapisanego regionu wraz z pozycją,
+prędkością, ciśnieniem i Storm Mode. Powody i koszty tej decyzji opisuje
+[ADR-0007](docs/adr/0007-aplikacja-online-z-zapisanymi-regionami.md).
 
-> **Status: pre-alfa.** Repozytorium zawiera specyfikację techniczną, decyzje
-> architektoniczne oraz przetestowany rdzeń logiki biznesowej. Aplikacje mobilne
-> jeszcze nie powstały.
+> **Status: alfa.** Aplikacja androidowa jeździ: mapa, pozycja, ślad przejazdu,
+> wyznaczanie trasy, zapowiedzi manewrów głosem, pogoda i zapisywanie regionów mapy.
+> Modułu iOS ani modułu AI z sekcji 6 jeszcze nie ma.
 
 ## Dokumentacja
 
@@ -26,7 +29,7 @@ docs/                Specyfikacja techniczna i ADR-y
 shared/              Moduł Kotlin Multiplatform — wspólna logika biznesowa
   src/commonMain/    Kod platform-niezależny
   src/commonTest/    Testy uruchamiane na każdym targecie
-androidApp/          Aplikacja Android (ekran diagnostyczny, nie interfejs nawigacji)
+androidApp/          Aplikacja Android — mapa, trasowanie, nawigacja głosowa
 ```
 
 Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od platformy:
@@ -36,7 +39,15 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 - **model kosztu krawędzi** — wzór z sekcji 5.1 specyfikacji wraz z semantyką wag
   i normalizacją do postaci wyłącznie podwyższającej,
 - **port `RouteEngine`** — granica, przez którą warstwa natywna wstrzykuje swój silnik
-  trasowania ([ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md)).
+  trasowania ([ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md)); dziś stoi
+  za nią klient Valhalli,
+- **postęp na trasie i zapowiedzi manewrów** — dystans do najbliższego manewru, progi
+  zapowiedzi i wykrywanie zjechania z trasy.
+
+**`maps`**
+
+- **szacowanie kosztu pobrania regionu** — liczba kafelków i przybliżony rozmiar,
+  liczone **zanim** pobieranie ruszy.
 
 **`weather`**
 
@@ -74,9 +85,8 @@ z Xcode. Kod w `commonMain` nie będzie wtedy wymagał zmian.
 
 ## APK
 
-Aplikacja androidowa to na razie **ekran diagnostyczny**, nie interfejs nawigacji: pokazuje,
-że logika z modułu `shared` działa na urządzeniu. Mapy, trasowania ani UI z sekcji 3
-specyfikacji jeszcze nie ma.
+Interfejs powstaje w kodzie, bez Compose — docelowe UI z sekcji 3 specyfikacji
+to osobny krok.
 
 APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 
@@ -84,7 +94,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.8.0 && git push origin v0.8.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**
@@ -134,13 +144,15 @@ zrób jego kopię poza repozytorium.
 | Logika współdzielona | Kotlin Multiplatform |
 | UI — Android | Jetpack Compose |
 | UI — iOS | SwiftUI |
-| Silnik mapy | MapLibre GL Native (`.mbtiles` offline) |
-| Silnik trasowania | GraphHopper — warstwa per-platforma, patrz [ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md) |
+| Silnik mapy | MapLibre GL Native; regiony offline przez `OfflineManager` ([ADR-0006](docs/adr/0006-mapy-offline-przez-offlinemanager.md)) |
+| Silnik trasowania | Valhalla przez sieć, za portem `RouteEngine` ([ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md), [ADR-0007](docs/adr/0007-aplikacja-online-z-zapisanymi-regionami.md)) |
 | Warstwa sieciowa | Ktor |
 | Baza danych | SQLDelight |
 
 ## Dalsze kroki
 
 Lista otwartych kwestii znajduje się w [sekcji 11 dokumentacji technicznej](docs/DOKUMENTACJA_TECHNICZNA.md#11-otwarte-kwestie-i-dalsze-kroki).
-Najbliższy krok to moduły aplikacji Android wraz z wiązaniem GraphHoppera i MapLibre —
-wymaga maszyny z Android SDK.
+Najbliżej są: zarządzanie zapisanymi regionami (nazwy, lista, usuwanie pojedynczo),
+usługa pierwszoplanowa — żeby oszczędzanie baterii z sekcji 7 działało przy zgaszonym
+ekranie — oraz rozstrzygnięcie, czy korzystać z publicznej instancji trasowania,
+czy własnej.

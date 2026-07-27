@@ -2,6 +2,7 @@ package pl.reactivebike.android
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -11,6 +12,8 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +22,8 @@ import android.widget.Toast
 import pl.reactivebike.gps.GpsState
 import pl.reactivebike.gps.GpsStateMachine
 import pl.reactivebike.gps.RideSignals
+import pl.reactivebike.maps.OfflineRegionEstimate
+import pl.reactivebike.maps.OfflineRegionEstimator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -314,17 +319,90 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             val bounds = panel.visibleBounds()
             if (bounds == null) {
                 Toast.makeText(this, "Mapa jeszcze się nie wczytała.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val start = { downloader.download(panel.activeStyleUrl, bounds) }
+            val estimate = estimateOrNull(bounds)
+
+            if (estimate != null && OfflineRegionEstimator.isLarge(estimate)) {
+                confirmLargeDownload(estimate, start)
             } else {
-                downloader.download(panel.activeStyleUrl, bounds)
+                start()
             }
         }
         dashboard.offlineDeleteButton.setOnClickListener { downloader.deleteAll() }
 
+        // Rozmiar pokazujemy przy każdym zatrzymaniu kamery, a nie dopiero po naciśnięciu
+        // przycisku — użytkownik ma widzieć koszt, kiedy jeszcze wybiera obszar.
+        panel.onVisibleAreaChanged = { showVisibleAreaEstimate(panel) }
+        showVisibleAreaEstimate(panel)
+
         downloader.refresh()
+    }
+
+    private fun showVisibleAreaEstimate(panel: MapPanel) {
+        val bounds = panel.visibleBounds() ?: return
+        val estimate = estimateOrNull(bounds) ?: return
+
+        val size = OfflineRegionEstimator.describeSize(estimate)
+        dashboard.set(
+            RideDashboard.KEY_OFFLINE_ESTIMATE,
+            if (OfflineRegionEstimator.isLarge(estimate)) {
+                "Widoczny obszar do pobrania: $size — przybliż mapę, żeby pobrać mniej."
+            } else {
+                "Widoczny obszar do pobrania: $size"
+            },
+        )
+    }
+
+    /**
+     * Szacowanie nie może przewrócić aplikacji.
+     *
+     * To wyłącznie podpowiedź obok przycisku, więc gdyby MapLibre zwróciło granice, których
+     * nie potrafimy zinterpretować, lepiej nie pokazać nic i pozwolić pobrać, niż zabić
+     * ekran w trakcie jazdy.
+     */
+    private fun estimateOrNull(bounds: org.maplibre.android.geometry.LatLngBounds): OfflineRegionEstimate? =
+        try {
+            OfflineMapDownloader.estimate(bounds)
+        } catch (_: Throwable) {
+            null
+        }
+
+    private fun confirmLargeDownload(estimate: OfflineRegionEstimate, onConfirm: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle("Duży obszar")
+            .setMessage(
+                "Ten obszar to ${estimate.tileCount} kafelków, czyli ${OfflineRegionEstimator.describeSize(estimate)}. " +
+                    "Przez sieć komórkową to zauważalny transfer i kilka minut czekania.\n\n" +
+                    "Przybliż mapę, jeśli wystarczy ci mniejszy wycinek.",
+            )
+            .setPositiveButton("Pobierz mimo to") { _, _ -> onConfirm() }
+            .setNegativeButton("Anuluj", null)
+            .show()
     }
 
 
     // --- trasowanie ---
+
+    /**
+     * Czy urządzenie ma połączenie zdatne do wyznaczenia trasy.
+     *
+     * Pytamy o `NET_CAPABILITY_VALIDATED`, a nie o samo istnienie sieci — telefon podpięty
+     * do hotspotu bez wyjścia na świat zgłasza połączenie, którym nic nie zrobimy.
+     * Przy jakimkolwiek kłopocie z odczytem zakładamy, że sieć jest: lepiej spróbować
+     * i pokazać błąd, niż odmówić trasowania komuś, kto ma zasięg.
+     */
+    private fun hasNetwork(): Boolean = try {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
+        capabilities != null &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    } catch (_: Throwable) {
+        true
+    }
 
     /** Wyznacza trasę z bieżącej pozycji do wskazanego punktu. */
     private fun requestRoute(target: GeoPoint) {
@@ -338,6 +416,18 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         destination = target
         announcer.reset()
         offRouteDetector.reset()
+
+        // ADR-0007: trasowanie jest sieciowe. Bez zasięgu mówimy o tym wprost, zamiast
+        // kazać użytkownikowi czekać na timeout i domyślać się z komunikatu o błędzie.
+        if (!hasNetwork()) {
+            currentRoute = null
+            routeStatus = "Brak sieci — wyznaczanie trasy wymaga połączenia. " +
+                "Pobrana mapa i pozycja działają dalej."
+            mapPanel?.showRoute(emptyList(), target)
+            render()
+            return
+        }
+
         routeRequestInFlight = true
         routeStatus = "Wyznaczam trasę…"
         mapPanel?.showRoute(emptyList(), target)

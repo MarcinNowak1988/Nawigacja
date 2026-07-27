@@ -54,6 +54,13 @@ class MapPanel(context: Context) {
     /** Wywoływane po długim naciśnięciu mapy — tak użytkownik wskazuje cel trasy. */
     var onDestinationPicked: ((Double, Double) -> Unit)? = null
 
+    /**
+     * Wywoływane, gdy kamera się zatrzyma — czyli gdy zmienił się obszar, który obejmie
+     * pobranie offline. Dzięki temu szacowany rozmiar odpowiada temu, co użytkownik widzi,
+     * a nie temu, co widział przy starcie.
+     */
+    var onVisibleAreaChanged: (() -> Unit)? = null
+
     /** Pozycja, na którą ustawiamy kamerę, zanim mapa się wczyta — np. ostatnia znana z systemu. */
     private var pendingCamera: LatLng? = null
     private var pendingZoom: Double = DEFAULT_ZOOM
@@ -88,6 +95,7 @@ class MapPanel(context: Context) {
             ready.moveCamera(
                 CameraUpdateFactory.newLatLngZoom(pendingCamera ?: DEFAULT_CAMERA, pendingZoom),
             )
+            ready.addOnCameraIdleListener { onVisibleAreaChanged?.invoke() }
             ready.addOnMapLongClickListener { point ->
                 onDestinationPicked?.invoke(point.latitude, point.longitude)
                 true

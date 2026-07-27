@@ -8,6 +8,9 @@ import org.maplibre.android.offline.OfflineManager
 import org.maplibre.android.offline.OfflineRegion
 import org.maplibre.android.offline.OfflineRegionStatus
 import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
+import pl.reactivebike.maps.GeoBounds
+import pl.reactivebike.maps.OfflineRegionEstimate
+import pl.reactivebike.maps.OfflineRegionEstimator
 
 /** Stan pobierania map offline, w postaci gotowej do pokazania na pulpicie. */
 data class OfflineMapsState(
@@ -203,14 +206,62 @@ class OfflineMapDownloader(context: Context) {
         handler.post { listener?.invoke(state) }
     }
 
-    private companion object {
+    companion object {
         const val MIN_ZOOM = 10.0
 
         /** Każdy kolejny poziom to czterokrotnie więcej kafelków — 15 wystarcza do jazdy. */
         const val MAX_ZOOM = 15.0
 
-        const val PIXEL_RATIO = 1.0f
-        const val POLL_MILLIS = 1_000L
-        const val REGION_METADATA = "reactivebike-region"
+        private const val PIXEL_RATIO = 1.0f
+        private const val POLL_MILLIS = 1_000L
+        private const val REGION_METADATA = "reactivebike-region"
+
+        /**
+         * Szacuje koszt pobrania danego wycinka mapy — **przed** uruchomieniem pobierania.
+         *
+         * Liczenie samo w sobie siedzi w module wspólnym ([OfflineRegionEstimator]), gdzie
+         * jest przetestowane. Tutaj zostaje wyłącznie tłumaczenie typu MapLibre na jego
+         * odpowiednik niezależny od platformy.
+         */
+        fun estimate(bounds: LatLngBounds): OfflineRegionEstimate =
+            OfflineRegionEstimator.estimate(
+                bounds = bounds.toGeoBounds(),
+                minZoom = MIN_ZOOM.toInt(),
+                maxZoom = MAX_ZOOM.toInt(),
+            )
+
+        /**
+         * Widoczny fragment mapy potrafi wyjść poza zakres współrzędnych: przy oddaleniu
+         * kamery MapLibre zwraca długości spoza -180..180, a szerokości spoza -90..90.
+         * `GeoBounds` takich wartości nie przyjmie, więc przycinamy je tutaj — inaczej
+         * naciśnięcie przycisku kończyłoby się wyjątkiem zamiast oszacowania.
+         */
+        private fun LatLngBounds.toGeoBounds(): GeoBounds {
+            // Sięgamy po pola `latitudeNorth`/`longitudeEast`…, a nie po `getLatNorth()` i spółkę:
+            // to samo wskazanie, ale pola są w tej klasie stałe od lat, a nazwy akcesorów już nie.
+            val north = latitudeNorth.coerceIn(-90.0, 90.0)
+            val south = latitudeSouth.coerceIn(-90.0, 90.0)
+
+            // Przy pełnym oddaleniu widok obejmuje więcej niż jeden obieg globu. Po sprowadzeniu
+            // do zakresu wyszłoby z tego wąskie okno wokół południka 180°, czyli oszacowanie
+            // wielokrotnie za małe — dlatego taki przypadek nazywamy wprost całym światem.
+            if (longitudeEast - longitudeWest >= 360.0) {
+                return GeoBounds(north = maxOf(north, south), south = minOf(north, south), east = 180.0, west = -180.0)
+            }
+
+            return GeoBounds(
+                north = maxOf(north, south),
+                south = minOf(north, south),
+                east = normalizeLongitude(longitudeEast),
+                west = normalizeLongitude(longitudeWest),
+            )
+        }
+
+        /** Sprowadza długość geograficzną do zakresu -180..180, zachowując położenie. */
+        private fun normalizeLongitude(longitude: Double): Double {
+            if (longitude in -180.0..180.0) return longitude
+            val wrapped = (longitude + 180.0).mod(360.0) - 180.0
+            return wrapped.coerceIn(-180.0, 180.0)
+        }
     }
 }
