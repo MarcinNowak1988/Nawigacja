@@ -55,13 +55,22 @@ class RideDashboard(private val context: Context) {
     lateinit var profileButton: Button
         private set
 
-    lateinit var searchField: EditText
+    lateinit var startField: EditText
         private set
 
-    lateinit var searchAddButton: Button
+    lateinit var startSearchButton: Button
         private set
 
-    lateinit var searchStartButton: Button
+    lateinit var destinationField: EditText
+        private set
+
+    lateinit var destinationSearchButton: Button
+        private set
+
+    lateinit var viaField: EditText
+        private set
+
+    lateinit var viaSearchButton: Button
         private set
 
     lateinit var navigationButton: Button
@@ -229,6 +238,8 @@ class RideDashboard(private val context: Context) {
             "Trasa",
             listOf(
                 KEY_ROUTE_PLAN,
+                KEY_START,
+                KEY_DESTINATION,
                 KEY_ROUTE_SUMMARY,
                 KEY_NEXT_MANEUVER,
                 KEY_ROUTE_PROGRESS,
@@ -310,38 +321,65 @@ class RideDashboard(private val context: Context) {
             setPadding(0, dp(10), 0, 0)
         }
 
-        searchField = EditText(context).apply {
-            hint = "Nazwa miejsca lub adres"
+        val start = namedSearchField("Start", "Skąd — puste znaczy „moja pozycja”")
+        startField = start.first
+        startSearchButton = start.second
+        column.addView(start.third)
+
+        val destination = namedSearchField("Koniec", "Dokąd")
+        destinationField = destination.first
+        destinationSearchButton = destination.second
+        column.addView(destination.third)
+
+        // Punkt pośredni jest opcjonalny, więc stoi pod startem i końcem, a nie między nimi.
+        val via = namedSearchField("Przez", "Punkt pośredni (opcjonalnie)")
+        viaField = via.first
+        viaSearchButton = via.second
+        column.addView(via.third)
+
+        return column
+    }
+
+    /**
+     * Wiersz wyszukiwania z własną etykietą.
+     *
+     * Etykieta jest osobnym napisem, a nie podpowiedzią w polu: podpowiedź znika po wpisaniu
+     * pierwszej litery, a wtedy nie da się już odróżnić pola startu od pola końca.
+     */
+    private fun namedSearchField(label: String, hintText: String): Triple<EditText, Button, LinearLayout> {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, 0)
+        }
+
+        row.addView(
+            TextView(context).apply {
+                text = label
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTypeface(Typeface.DEFAULT_BOLD)
+                setTextColor(MUTED)
+                width = dp(58)
+            },
+        )
+
+        val field = EditText(context).apply {
+            hint = hintText
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             isSingleLine = true
-            // Klawisz zatwierdzenia szuka punktu trasy — najczęstszy przypadek.
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        column.addView(searchField)
-
-        val actions = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        searchStartButton = Button(context).apply {
-            text = "Szukaj startu"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        searchAddButton = Button(context).apply {
-            text = "Szukaj punktu"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        actions.addView(searchStartButton)
-        actions.addView(searchAddButton)
-        column.addView(actions)
+        row.addView(field)
 
-        return column
+        val button = Button(context).apply {
+            text = "Szukaj"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        }
+        row.addView(button)
+
+        return Triple(field, button, row)
     }
 
     /** Karta map offline — pobieranie jest czynnością użytkownika, więc ma własne akcje. */
@@ -438,6 +476,8 @@ class RideDashboard(private val context: Context) {
         const val KEY_WEATHER_AGE = "weatherAge"
 
         const val KEY_ROUTE_PLAN = "routePlan"
+        const val KEY_START = "planStart"
+        const val KEY_DESTINATION = "planDestination"
         const val KEY_BICYCLE_PROFILE = "bicycleProfile"
         const val KEY_ROUTE_SUMMARY = "routeSummary"
         const val KEY_ROUTE_PROGRESS = "routeProgress"

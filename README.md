@@ -111,7 +111,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.12.0 && git push origin v0.12.0
+git tag v0.13.0 && git push origin v0.13.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**
@@ -121,15 +121,28 @@ pasuje do praktycznie każdego telefonu z ostatnich lat i jest najmniejszy (~16 
 
 ## Podpisywanie wydań
 
-> **Bez tej konfiguracji kolejnych wydań nie da się instalować na wierzch poprzednich.**
+**Wydania instalują się na wierzch poprzednich.** Odpowiada za to plik
+`androidApp/debug.keystore`, który jest **celowo w repozytorium**.
 
-Gdy sekrety podpisywania nie są ustawione, `assembleRelease` podpisuje APK kluczem
-debugowym z `~/.android/debug.keystore`. Runner GitHub Actions to za każdym razem świeża
-maszyna, a cache obejmuje `~/.gradle`, nie `~/.android` — więc **każde wydanie dostaje
-inny klucz**. Android odmawia wtedy aktualizacji z błędem `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
-i trzeba odinstalować aplikację przed każdą nową wersją.
+Powód: bez niego `assembleRelease` sięgał po klucz debugowy z `~/.android/debug.keystore`,
+a runner GitHub Actions to za każdym razem świeża maszyna — cache obejmuje `~/.gradle`,
+nie `~/.android`. Każde wydanie dostawało więc **inny klucz**, Android odmawiał aktualizacji
+z błędem `INSTALL_FAILED_UPDATE_INCOMPATIBLE` i trzeba było odinstalowywać aplikację przed
+każdą nową wersją. Stały plik to kończy.
 
-Żeby to naprawić, wystarczy jednorazowo wygenerować klucz i wgrać go do sekretów:
+Trzy rzeczy warto wiedzieć wprost:
+
+- **Klucz debugowy nie jest sekretem** i nie udaje nim być. Hasło to `android`, alias
+  `androiddebugkey` — tak jak w każdym domyślnym kluczu debugowym Androida.
+- Ponieważ repozytorium jest publiczne, **ktokolwiek może zbudować APK podpisany tym samym
+  kluczem**. Przy dystrybucji przez własne wydania GitHuba to akceptowalne; przy szerszej
+  dystrybucji już nie.
+- **Do sklepu taki APK się nie nadaje.** Do tego służą sekrety podpisywania poniżej — gdy
+  są ustawione, wygrywają z kluczem debugowym.
+
+### Własny klucz wydania (opcjonalnie, wymagane do sklepu)
+
+Żeby podpisywać kluczem, którego nie ma w repozytorium, wygeneruj go i wgraj do sekretów:
 
 ```bash
 keytool -genkeypair -v \
@@ -150,9 +163,9 @@ Następnie w repozytorium — *Settings → Secrets and variables → Actions* �
 | `RELEASE_KEY_ALIAS` | `reactivebike` |
 | `RELEASE_KEY_PASSWORD` | hasło klucza (przy powyższym poleceniu to samo co hasło keystore) |
 
-**Pliku `.keystore` nigdy nie commituj** — `.gitignore` już go blokuje. Zgubienie tego
-klucza oznacza, że kolejnych wydań nie da się zainstalować jako aktualizacji, więc
-zrób jego kopię poza repozytorium.
+**Tego pliku `.keystore` nie commituj** — `.gitignore` blokuje `*.keystore`, z jawnym
+wyjątkiem dla `androidApp/debug.keystore`. Zgubienie klucza wydania oznacza, że kolejnych
+wydań nie da się zainstalować jako aktualizacji, więc zrób jego kopię poza repozytorium.
 
 ## Stos technologiczny
 

@@ -52,3 +52,8 @@ Thumbs.db
 *.swp
 *~
 .vscode/
+
+# Klucz debugowy jest **celowo** w repozytorium: bez stalego klucza kazde wydanie
+# z GitHub Actions dostaje inny podpis i Androida odmawia aktualizacji. Klucz debugowy
+# nie jest sekretem — patrz README, sekcja "Podpisywanie wydan".
+!androidApp/debug.keystore

@@ -128,7 +128,7 @@ jobs:
           if [ "$SIGNED" = "true" ]; then
             SIGNING="APK podpisany kluczem wydania - instaluje sie na wierzch poprzedniej wersji."
           else
-            SIGNING=":warning: **Przed instalacja odinstaluj poprzednia wersje.** APK jest podpisany kluczem debugowym, ktory runner GitHub Actions generuje od nowa przy kazdym przebiegu, wiec Android odmowi aktualizacji (\`INSTALL_FAILED_UPDATE_INCOMPATIBLE\`). Zeby wydania dalo sie aktualizowac, skonfiguruj sekrety podpisywania - instrukcja w README, sekcja \"Podpisywanie wydan\"."
+            SIGNING="APK jest podpisany **stalym kluczem debugowym z repozytorium**, wiec instaluje sie na wierzch poprzedniej wersji - bez odinstalowywania. Jednorazowy wyjatek: przy aktualizacji z wydania **starszego niz v0.13.0** trzeba raz odinstalowac aplikacje, bo tamte mialy klucz losowany przy kazdym przebiegu. Taki APK nie nadaje sie do dystrybucji w sklepie; do tego sluza sekrety podpisywania opisane w README."
           fi
 
           GUIDE="**Ktory plik pobrac?** \`arm64-v8a\` pasuje do praktycznie kazdego telefonu z ostatnich lat i jest najmniejszy. Jesli nie masz pewnosci, wez \`universal\` - dziala wszedzie, ale wazy wiecej."

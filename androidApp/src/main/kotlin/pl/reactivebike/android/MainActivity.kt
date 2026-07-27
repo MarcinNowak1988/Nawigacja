@@ -46,6 +46,9 @@ import pl.reactivebike.routing.RoutePlan
 import pl.reactivebike.routing.RouteRequest
 import pl.reactivebike.routing.RouteResult
 import pl.reactivebike.routing.RouteTracker
+import pl.reactivebike.routing.PlannedStop
+import pl.reactivebike.routing.StopRole
+import pl.reactivebike.routing.Waypoint
 import pl.reactivebike.routing.valhalla.BicycleProfile
 import pl.reactivebike.weather.CachedWeatherWeights
 import pl.reactivebike.weather.LocalWeightsTranslator
@@ -187,8 +190,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.undoStopButton.setOnClickListener { undoStop() }
         dashboard.startHereButton.setOnClickListener { toggleStart() }
         dashboard.profileButton.setOnClickListener { pickBicycleProfile() }
-        dashboard.searchAddButton.setOnClickListener { searchPlace(asStart = false) }
-        dashboard.searchStartButton.setOnClickListener { searchPlace(asStart = true) }
+        dashboard.startSearchButton.setOnClickListener { searchPlace(PlanSlot.START) }
+        dashboard.destinationSearchButton.setOnClickListener { searchPlace(PlanSlot.DESTINATION) }
+        dashboard.viaSearchButton.setOnClickListener { searchPlace(PlanSlot.VIA) }
         dashboard.navigationButton.setOnClickListener { toggleNavigation() }
         setUpSearchField()
 
@@ -504,7 +508,18 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
      * pozycji albo nie ma zasięgu i trasy nie będzie.
      */
     private fun syncPlanOnMap() {
-        mapPanel?.showStops(plan.stops())
+        val stops = plan.stops().toMutableList()
+
+        // Gdy startem jest bieżąca pozycja, plan nie ma punktu startowego do narysowania —
+        // a użytkownik ma prawo widzieć na mapie, gdzie trasa się zaczyna. Bierzemy wtedy
+        // pierwszy punkt wyznaczonej trasy, żeby „Start" i „Koniec" były zawsze oznaczone.
+        if (plan.start == null) {
+            currentRoute?.geometry?.firstOrNull()?.let { origin ->
+                stops.add(0, PlannedStop(Waypoint(origin, "moja pozycja"), StopRole.START))
+            }
+        }
+
+        mapPanel?.showStops(stops)
     }
 
     /** Przełącza start między bieżącą pozycją a punktem wskazanym na mapie. */
@@ -553,7 +568,13 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
      * i wyniki zostaje pasek kilku wierszy nad klawiaturą.
      */
     private fun setUpSearchField() {
-        dashboard.searchField.setOnFocusChangeListener { view, hasFocus ->
+        bindSearchField(dashboard.startField, PlanSlot.START)
+        bindSearchField(dashboard.destinationField, PlanSlot.DESTINATION)
+        bindSearchField(dashboard.viaField, PlanSlot.VIA)
+    }
+
+    private fun bindSearchField(field: android.widget.EditText, slot: PlanSlot) {
+        field.setOnFocusChangeListener { view, hasFocus ->
             dashboard.setMapVisible(!hasFocus)
             if (hasFocus) {
                 // Przewinięcie odkładamy na później: układ musi się najpierw przeliczyć
@@ -564,9 +585,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             }
         }
 
-        dashboard.searchField.setOnEditorActionListener { _, actionId, _ ->
+        field.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
-                searchPlace(asStart = false)
+                searchPlace(slot)
                 true
             } else {
                 false
@@ -574,11 +595,20 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         }
     }
 
+    /** Które miejsce w planie wypełnia wyszukiwanie. */
+    private enum class PlanSlot(val fieldLabel: String) {
+        START("Wybierz start"),
+        DESTINATION("Wybierz koniec"),
+        VIA("Wybierz punkt pośredni"),
+    }
+
     /** Zamyka klawiaturę i oddaje mapie jej miejsce. */
     private fun dismissKeyboard() {
         val manager = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-        manager?.hideSoftInputFromWindow(dashboard.searchField.windowToken, 0)
-        dashboard.searchField.clearFocus()
+        listOf(dashboard.startField, dashboard.destinationField, dashboard.viaField).forEach { field ->
+            manager?.hideSoftInputFromWindow(field.windowToken, 0)
+            field.clearFocus()
+        }
         dashboard.setMapVisible(true)
     }
 
@@ -587,8 +617,13 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
      *
      * @param asStart czy znalezione miejsce ma zostać startem, czy kolejnym punktem trasy
      */
-    private fun searchPlace(asStart: Boolean) {
-        val query = dashboard.searchField.text?.toString().orEmpty().trim()
+    private fun searchPlace(slot: PlanSlot) {
+        val field = when (slot) {
+            PlanSlot.START -> dashboard.startField
+            PlanSlot.DESTINATION -> dashboard.destinationField
+            PlanSlot.VIA -> dashboard.viaField
+        }
+        val query = field.text?.toString().orEmpty().trim()
         if (query.isBlank()) {
             Toast.makeText(this, "Wpisz nazwę miejsca albo adres.", Toast.LENGTH_SHORT).show()
             return
@@ -614,7 +649,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             setSearchEnabled(true)
 
             when (result) {
-                is GeocodeResult.Success -> showSearchResults(result.places, asStart)
+                is GeocodeResult.Success -> showSearchResults(result.places, slot)
                 GeocodeResult.NoMatches ->
                     Toast.makeText(this@MainActivity, "Nic nie znalazłem dla: $query", Toast.LENGTH_LONG).show()
                 GeocodeResult.Failure ->
@@ -624,9 +659,11 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     }
 
     private fun setSearchEnabled(enabled: Boolean) {
-        dashboard.searchAddButton.isEnabled = enabled
-        dashboard.searchStartButton.isEnabled = enabled
-        dashboard.searchAddButton.text = if (enabled) "Szukaj punktu" else "Szukam…"
+        listOf(dashboard.startSearchButton, dashboard.destinationSearchButton, dashboard.viaSearchButton)
+            .forEach { button ->
+                button.isEnabled = enabled
+                button.text = if (enabled) "Szukaj" else "…"
+            }
     }
 
     /**
@@ -635,35 +672,53 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
      * Nazwy miejscowości się powtarzają, więc obok nazwy pokazujemy resztę adresu —
      * bez tego wybór między trzema Nowymi Wsiami byłby losowaniem.
      */
-    private fun showSearchResults(places: List<Place>, asStart: Boolean) {
+    private fun showSearchResults(places: List<Place>, slot: PlanSlot) {
         val labels = places.map { place ->
             if (place.detail.isBlank()) place.name else "${place.name}\n${place.detail}"
         }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle(if (asStart) "Wybierz start" else "Wybierz punkt trasy")
-            .setItems(labels) { _, which -> applyFoundPlace(places[which], asStart) }
+            .setTitle(slot.fieldLabel)
+            .setItems(labels) { _, which -> applyFoundPlace(places[which], slot) }
             .setNegativeButton("Anuluj", null)
             .show()
     }
 
-    private fun applyFoundPlace(place: Place, asStart: Boolean) {
-        if (asStart) {
-            plan = plan.withStart(place.point)
-        } else {
-            val extended = plan.withNextStop(place.point)
-            if (extended == null) {
-                Toast.makeText(
-                    this,
-                    "Limit ${RoutePlan.MAX_WAYPOINTS} punktów na trasę — usuń któryś, żeby dodać nowy.",
-                    Toast.LENGTH_LONG,
-                ).show()
-                return
+    /**
+     * Wstawia znalezione miejsce w to miejsce planu, o które prosił użytkownik.
+     *
+     * Nazwa jedzie razem ze współrzędnymi, dzięki czemu pulpit i podpis na mapie mówią
+     * „Wawel", a nie parę liczb.
+     */
+    private fun applyFoundPlace(place: Place, slot: PlanSlot) {
+        when (slot) {
+            PlanSlot.START -> {
+                plan = plan.withStart(place.point, place.name)
+                dashboard.startField.setText("")
             }
-            plan = extended
+
+            // Koniec **podmieniamy**, a nie doklejamy: pole „Koniec" ma jedno znaczenie,
+            // więc ponowne wyszukanie zmienia cel, zamiast spychać poprzedni na trasę.
+            PlanSlot.DESTINATION -> {
+                plan = plan.withDestination(place.point, place.name)
+                dashboard.destinationField.setText("")
+            }
+
+            PlanSlot.VIA -> {
+                val extended = plan.withNextStop(place.point, place.name)
+                if (extended == null) {
+                    Toast.makeText(
+                        this,
+                        "Limit ${RoutePlan.MAX_WAYPOINTS} punktów na trasę — usuń któryś, żeby dodać nowy.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return
+                }
+                plan = extended
+                dashboard.viaField.setText("")
+            }
         }
 
-        dashboard.searchField.setText("")
         mapPanel?.focusOn(place.point.latitude, place.point.longitude)
         syncPlanOnMap()
 
@@ -770,6 +825,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
                     currentRoute = result.route
                     routeStatus = null
                     mapPanel?.showRoute(result.route.geometry)
+                    // Dopiero teraz znamy początek trasy, więc znacznik startu ma czym się stać.
+                    syncPlanOnMap()
                 }
 
                 is RouteResult.Failure -> {
@@ -809,6 +866,11 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         val status = routeStatus
 
         dashboard.set(RideDashboard.KEY_ROUTE_PLAN, plan.describe())
+        dashboard.set(RideDashboard.KEY_START, "Start: ${plan.describeStart()}")
+        dashboard.set(
+            RideDashboard.KEY_DESTINATION,
+            "Koniec: ${plan.describeDestination() ?: "nie wybrano"}",
+        )
         dashboard.set(RideDashboard.KEY_BICYCLE_PROFILE, "Rower: ${bicycleProfile.label}")
         dashboard.profileButton.text = bicycleProfile.label
         dashboard.startHereButton.text = if (plan.start != null) "Start: wybrany" else "Start: stąd"

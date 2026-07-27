@@ -3,8 +3,28 @@ package pl.reactivebike.routing
 /** Rola punktu w planie przejazdu — decyduje o tym, jak jest rysowany i opisywany. */
 enum class StopRole { START, VIA, DESTINATION }
 
+/**
+ * Punkt planu wraz z nazwą.
+ *
+ * Nazwa jest częścią punktu, a nie dodatkiem obok: miejsce znalezione po nazwie traciło ją
+ * w chwili trafienia do planu, przez co „Wawel" zamieniał się w parę liczb i użytkownik
+ * nie miał jak sprawdzić, co właściwie wybrał.
+ *
+ * @property label nazwa do pokazania; `null` znaczy „nie wiemy", np. przy punkcie wskazanym
+ *   palcem na mapie, dla którego nie pytaliśmy o adres
+ */
+data class Waypoint(
+    val point: GeoPoint,
+    val label: String? = null,
+) {
+    /** Nazwa albo współrzędne — zawsze coś, co da się pokazać użytkownikowi. */
+    fun describe(): String = label ?: formatCoordinates(point)
+}
+
 /** Punkt planu wraz z rolą, w kolejności przejazdu. */
-data class PlannedStop(val point: GeoPoint, val role: StopRole)
+data class PlannedStop(val waypoint: Waypoint, val role: StopRole) {
+    val point: GeoPoint get() = waypoint.point
+}
 
 /**
  * Plan przejazdu: skąd, przez co i dokąd.
@@ -19,9 +39,9 @@ data class PlannedStop(val point: GeoPoint, val role: StopRole)
  * @property destination cel; dopóki jest `null`, planu nie da się wyznaczyć
  */
 data class RoutePlan(
-    val start: GeoPoint? = null,
-    val via: List<GeoPoint> = emptyList(),
-    val destination: GeoPoint? = null,
+    val start: Waypoint? = null,
+    val via: List<Waypoint> = emptyList(),
+    val destination: Waypoint? = null,
 ) {
 
     /** Czy plan ma dość informacji, żeby zlecić wyznaczenie trasy. */
@@ -44,11 +64,12 @@ data class RoutePlan(
      * Zwraca `null`, gdy plan osiągnął [MAX_WAYPOINTS] — wtedy wywołujący ma powiedzieć
      * użytkownikowi, że limit jest wyczerpany, zamiast po cichu zignorować gest.
      */
-    fun withNextStop(point: GeoPoint): RoutePlan? {
+    fun withNextStop(point: GeoPoint, label: String? = null): RoutePlan? {
         if (waypointCount() >= MAX_WAYPOINTS) return null
 
-        val current = destination ?: return copy(destination = point)
-        return copy(via = via + current, destination = point)
+        val added = Waypoint(point, label)
+        val current = destination ?: return copy(destination = added)
+        return copy(via = via + current, destination = added)
     }
 
     /**
@@ -57,7 +78,12 @@ data class RoutePlan(
      * Nigdy nie odbija się od limitu: start zajmuje dokładnie jedno miejsce niezależnie
      * od tego, czy jest wskazany, czy brany z pozycji — [waypointCount] liczy je tak samo.
      */
-    fun withStart(point: GeoPoint): RoutePlan = copy(start = point)
+    fun withStart(point: GeoPoint, label: String? = null): RoutePlan =
+        copy(start = Waypoint(point, label))
+
+    /** Podmienia sam cel, zostawiając punkty pośrednie na miejscu. */
+    fun withDestination(point: GeoPoint, label: String? = null): RoutePlan =
+        copy(destination = Waypoint(point, label))
 
     /** Wraca do startu z bieżącej pozycji. */
     fun startingFromCurrentPosition(): RoutePlan = copy(start = null)
@@ -97,7 +123,7 @@ data class RoutePlan(
         reachRadiusMeters: Double = VIA_REACH_RADIUS_METERS,
     ): RoutePlan {
         var remaining = via
-        while (remaining.isNotEmpty() && position.distanceTo(remaining.first()) <= reachRadiusMeters) {
+        while (remaining.isNotEmpty() && position.distanceTo(remaining.first().point) <= reachRadiusMeters) {
             remaining = remaining.drop(1)
         }
         return if (remaining.size == via.size) this else copy(via = remaining)
@@ -119,27 +145,33 @@ data class RoutePlan(
      */
     fun waypoints(currentPosition: GeoPoint?): List<GeoPoint>? {
         val target = destination ?: return null
-        val origin = start ?: currentPosition ?: return null
-        return listOf(origin) + via + target
+        val origin = start?.point ?: currentPosition ?: return null
+        return listOf(origin) + via.map { it.point } + target.point
     }
+
+    /** Opis startu do pokazania obok pola wyboru. */
+    fun describeStart(): String = start?.describe() ?: "moja pozycja"
+
+    /** Opis celu; `null`, gdy nie został jeszcze wybrany. */
+    fun describeDestination(): String? = destination?.describe()
 
     /** Opis planu do pokazania na pulpicie. */
     fun describe(): String {
         if (!isComplete) {
             return if (via.isEmpty() && start == null) {
-                "Brak trasy — przytrzymaj palec na mapie, żeby wskazać cel."
+                "Brak trasy — wskaż cel na mapie albo wyszukaj go po nazwie."
             } else {
                 "Plan niekompletny — wskaż cel."
             }
         }
 
-        val from = if (start == null) "moja pozycja" else "wybrany punkt"
-        return when (via.size) {
-            0 -> "Z: $from → cel"
-            1 -> "Z: $from → 1 punkt pośredni → cel"
-            in 2..4 -> "Z: $from → ${via.size} punkty pośrednie → cel"
-            else -> "Z: $from → ${via.size} punktów pośrednich → cel"
+        val viaPart = when (via.size) {
+            0 -> ""
+            1 -> " przez 1 punkt pośredni"
+            in 2..4 -> " przez ${via.size} punkty pośrednie"
+            else -> " przez ${via.size} punktów pośrednich"
         }
+        return "Z: ${describeStart()}$viaPart do: ${describeDestination()}"
     }
 
     /** Ile punktów pójdzie do silnika, licząc start z pozycji, który dołoży się później. */
@@ -164,4 +196,22 @@ data class RoutePlan(
          */
         const val VIA_REACH_RADIUS_METERS = 40.0
     }
+}
+
+/**
+ * Współrzędne w postaci czytelnej dla człowieka.
+ *
+ * Pięć miejsc po przecinku to około metra — dokładniej nie ma sensu przy punkcie
+ * wskazanym palcem, a mniej nie odróżniłoby sąsiednich ulic.
+ */
+internal fun formatCoordinates(point: GeoPoint): String {
+    fun round(value: Double): String {
+        // Zaokrąglamy, a nie obcinamy: iloczyn zmiennoprzecinkowy potrafi dać
+        // -3386784.9999999995 zamiast -3386785, przez co ostatnia cyfra uciekała.
+        val scaled = kotlin.math.round(value * 100_000).toLong()
+        val whole = scaled / 100_000
+        val fraction = (if (scaled < 0) -scaled else scaled) % 100_000
+        return "$whole.${fraction.toString().padStart(5, '0')}"
+    }
+    return "${round(point.latitude)}, ${round(point.longitude)}"
 }

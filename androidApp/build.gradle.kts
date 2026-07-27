@@ -19,8 +19,8 @@ android {
         applicationId = "pl.reactivebike"
         minSdk = property("androidMinSdk").toString().toInt()
         targetSdk = property("androidTargetSdk").toString().toInt()
-        versionCode = 12
-        versionName = "0.12.0"
+        versionCode = 13
+        versionName = "0.13.0"
     }
 
     // Podpisywanie wydania kluczem z sekretów CI, gdy są dostępne.
@@ -38,6 +38,25 @@ android {
                 storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("RELEASE_KEY_ALIAS")
                 keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+
+        // Klucz debugowy z repozytorium zamiast tego z `~/.android`.
+        //
+        // Runner GitHub Actions to za kazdym razem swieza maszyna, a cache obejmuje
+        // `~/.gradle`, nie `~/.android` — wiec domyslny klucz debugowy byl generowany od nowa
+        // przy kazdym wydaniu. Android widzial inny podpis i odmawial aktualizacji, zmuszajac
+        // do odinstalowania aplikacji przed kazda nowa wersja. Staly plik to konczy.
+        //
+        // Klucz debugowy nie jest sekretem i nie udaje nim byc — sluzy wylacznie temu, zeby
+        // kolejne wydania mialy ten sam podpis.
+        getByName("debug") {
+            val shared = rootProject.file("androidApp/debug.keystore")
+            if (shared.exists()) {
+                storeFile = shared
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }

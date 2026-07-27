@@ -178,8 +178,15 @@ class MapPanel(context: Context) {
             style.addLayer(
                 SymbolLayer(LAYER_STOP_LABELS, SOURCE_DESTINATION).withProperties(
                     PropertyFactory.textField(Expression.get(PROPERTY_STOP_LABEL)),
-                    PropertyFactory.textSize(11f),
-                    PropertyFactory.textColor(Color.WHITE),
+                    PropertyFactory.textSize(12f),
+                    PropertyFactory.textColor(Color.BLACK),
+                    // Podpis pod znacznikiem, a nie na nim: „Start" i „Koniec" nie zmieszczą
+                    // się w kółku, a przykryte kółkiem byłyby nieczytelne.
+                    PropertyFactory.textAnchor("top"),
+                    PropertyFactory.textOffset(arrayOf(0f, 0.9f)),
+                    // Obwódka, bo podpis leży na mapie o nieprzewidywalnym tle.
+                    PropertyFactory.textHaloColor(Color.WHITE),
+                    PropertyFactory.textHaloWidth(1.6f),
                     PropertyFactory.textAllowOverlap(true),
                     PropertyFactory.textIgnorePlacement(true),
                 ),
@@ -243,8 +250,8 @@ class MapPanel(context: Context) {
         index: Int,
         stops: List<pl.reactivebike.routing.PlannedStop>,
     ): String = when (stop.role) {
-        pl.reactivebike.routing.StopRole.START -> "S"
-        pl.reactivebike.routing.StopRole.DESTINATION -> "META"
+        pl.reactivebike.routing.StopRole.START -> "Start"
+        pl.reactivebike.routing.StopRole.DESTINATION -> "Koniec"
         // Numerujemy wyłącznie punkty pośrednie, żeby „1" znaczyło pierwszy przystanek,
         // a nie pierwszy punkt na liście — start bywa, a bywa i nie.
         pl.reactivebike.routing.StopRole.VIA ->

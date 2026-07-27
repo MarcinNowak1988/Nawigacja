@@ -21,7 +21,7 @@ class RoutePlanTest {
     fun first_picked_point_becomes_the_destination() {
         val plan = RoutePlan().withNextStop(A)!!
 
-        assertEquals(A, plan.destination)
+        assertEquals(Waypoint(A), plan.destination)
         assertTrue(plan.via.isEmpty())
         assertTrue(plan.isComplete)
     }
@@ -31,8 +31,8 @@ class RoutePlanTest {
     fun second_picked_point_pushes_the_old_destination_into_via() {
         val plan = RoutePlan().withNextStop(A)!!.withNextStop(B)!!
 
-        assertEquals(listOf(A), plan.via)
-        assertEquals(B, plan.destination)
+        assertEquals(listOf(Waypoint(A)), plan.via)
+        assertEquals(Waypoint(B), plan.destination)
     }
 
     @Test
@@ -79,7 +79,7 @@ class RoutePlanTest {
     fun undo_returns_the_previous_destination() {
         val plan = RoutePlan().withNextStop(A)!!.withNextStop(B)!!.withoutLastStop()
 
-        assertEquals(A, plan.destination)
+        assertEquals(Waypoint(A), plan.destination)
         assertTrue(plan.via.isEmpty())
     }
 
@@ -101,8 +101,8 @@ class RoutePlanTest {
     fun via_point_can_be_removed_by_index() {
         val plan = RoutePlan().withNextStop(A)!!.withNextStop(B)!!.withNextStop(C)!!
 
-        assertEquals(listOf(A, B), plan.via)
-        assertEquals(listOf(B), plan.withoutVia(0).via)
+        assertEquals(listOf(Waypoint(A), Waypoint(B)), plan.via)
+        assertEquals(listOf(Waypoint(B)), plan.withoutVia(0).via)
     }
 
     @Test
@@ -126,9 +126,9 @@ class RoutePlanTest {
 
         assertEquals(
             listOf(
-                PlannedStop(C, StopRole.START),
-                PlannedStop(A, StopRole.VIA),
-                PlannedStop(B, StopRole.DESTINATION),
+                PlannedStop(Waypoint(C), StopRole.START),
+                PlannedStop(Waypoint(A), StopRole.VIA),
+                PlannedStop(Waypoint(B), StopRole.DESTINATION),
             ),
             plan.stops(),
         )
@@ -139,7 +139,7 @@ class RoutePlanTest {
     fun implicit_start_is_not_listed_as_a_stop() {
         val plan = RoutePlan().withNextStop(A)!!
 
-        assertEquals(listOf(PlannedStop(A, StopRole.DESTINATION)), plan.stops())
+        assertEquals(listOf(PlannedStop(Waypoint(A), StopRole.DESTINATION)), plan.stops())
     }
 
     @Test
@@ -159,7 +159,7 @@ class RoutePlanTest {
         repeat(RoutePlan.MAX_WAYPOINTS - 2) { plan = plan.withNextStop(B)!! }
         val withStart = plan.withStart(C)
 
-        assertEquals(C, withStart.start)
+        assertEquals(Waypoint(C), withStart.start)
         assertNull(withStart.withNextStop(A), "kolejny punkt juz sie nie miesci")
     }
 
@@ -172,7 +172,7 @@ class RoutePlanTest {
         val afterPassing = plan.consumingReachedVia(A)
 
         assertTrue(afterPassing.via.isEmpty(), "minięty punkt powinien zniknąć: ${afterPassing.via}")
-        assertEquals(B, afterPassing.destination)
+        assertEquals(Waypoint(B), afterPassing.destination)
     }
 
     @Test
@@ -189,7 +189,7 @@ class RoutePlanTest {
 
         val afterPassing = plan.consumingReachedVia(B)
 
-        assertEquals(listOf(A, B), afterPassing.via)
+        assertEquals(listOf(Waypoint(A), Waypoint(B)), afterPassing.via)
     }
 
     @Test
@@ -222,16 +222,56 @@ class RoutePlanTest {
     @Test
     fun description_says_whether_the_start_is_the_current_position() {
         val fromHere = RoutePlan().withNextStop(A)!!
-        val fromPicked = fromHere.withStart(C)
 
         assertTrue(fromHere.describe().contains("moja pozycja"), fromHere.describe())
-        assertTrue(fromPicked.describe().contains("wybrany punkt"), fromPicked.describe())
+        assertEquals("moja pozycja", fromHere.describeStart())
+    }
+
+    /** Sedno zmiany: użytkownik ma widzieć, co wybrał, a nie że „coś" wybrał. */
+    @Test
+    fun a_named_place_is_described_by_its_name() {
+        val plan = RoutePlan()
+            .withNextStop(A, label = "Rynek Główny")!!
+            .withStart(C, label = "Wawel")
+
+        assertEquals("Wawel", plan.describeStart())
+        assertEquals("Rynek Główny", plan.describeDestination())
+        assertTrue(plan.describe().contains("Wawel"), plan.describe())
+        assertTrue(plan.describe().contains("Rynek Główny"), plan.describe())
+    }
+
+    /** Punkt wskazany palcem nie ma nazwy — wtedy pokazujemy współrzędne, nie pustkę. */
+    @Test
+    fun an_unnamed_point_falls_back_to_coordinates() {
+        val plan = RoutePlan().withNextStop(GeoPoint(50.06143, 19.93658))!!
+
+        assertEquals("50.06143, 19.93658", plan.describeDestination())
+    }
+
+    @Test
+    fun coordinates_south_and_west_of_zero_keep_their_sign() {
+        val described = Waypoint(GeoPoint(-33.86785, -151.20732)).describe()
+
+        assertEquals("-33.86785, -151.20732", described)
+    }
+
+    @Test
+    fun destination_can_be_replaced_without_touching_the_via_points() {
+        val plan = RoutePlan().withNextStop(A)!!.withNextStop(B)!!.withDestination(C, "Nowy cel")
+
+        assertEquals(listOf(Waypoint(A)), plan.via)
+        assertEquals("Nowy cel", plan.describeDestination())
+    }
+
+    @Test
+    fun there_is_no_destination_to_describe_before_one_is_chosen() {
+        assertNull(RoutePlan().describeDestination())
     }
 
     @Test
     fun description_of_an_incomplete_plan_asks_for_a_destination() {
-        assertTrue(RoutePlan().describe().contains("wskazać cel"))
-        assertTrue(RoutePlan(start = C).describe().contains("wskaż cel"))
+        assertTrue(RoutePlan().describe().contains("wskaż cel"))
+        assertTrue(RoutePlan(start = Waypoint(C)).describe().contains("wskaż cel"))
     }
 
     private companion object {
