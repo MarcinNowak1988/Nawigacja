@@ -17,7 +17,8 @@
 >
 > **Zmiany w wersji 2.1.** Trasa powstaje z planu przejazdu z punktami pośrednimi, wskazywanymi
 > na mapie albo przez wyszukiwanie tekstowe (sekcja 5.0). Doszły dane postępu z szacowanym
-> czasem dojazdu (5.0.1). Sekcja 9 odnotowuje, że zapytania wyszukiwarki także opuszczają urządzenie.
+> czasem dojazdu (5.0.2). Nawigacja ma jawny początek i koniec (5.0.1), dzięki czemu
+> najkosztowniejszy tryb GPS włącza się dopiero w trakcie jazdy. Sekcja 9 odnotowuje, że zapytania wyszukiwarki także opuszczają urządzenie.
 >
 > **Zmiany w wersji 2.0 — zmiana kierunku produktu.** ReactiveBike jest **aplikacją online**.
 > Wyznaczanie trasy wymaga sieci; tryb offline zawęża się do zapisanych regionów mapy.
@@ -147,7 +148,15 @@ Dwie zasady są warte zapisania, bo nie wynikają z niczego oczywistego:
 
 Punkty planu wskazuje się na mapie albo **wpisując nazwę miejsca**. Wyszukiwanie opiera się o publiczną instancję Nominatim; jej zasady korzystania są wiążące, nie uprzejme, i kształtują interfejs: wymagany jest identyfikujący `User-Agent`, najwyżej jedno zapytanie na sekundę oraz **brak podpowiedzi w trakcie pisania**. Dlatego szukanie uruchamia przycisk, a nie każde naciśnięcie klawisza. Bieżąca pozycja podbija trafność wyników miękkim oknem (`bounded=0`) — „Rynek" ma znaczyć rynek w okolicy, ale rynek z drugiego końca kraju dalej da się znaleźć.
 
-### 5.0.1 Dane postępu
+### 5.0.1 Rozpoczęcie i zakończenie nawigacji
+
+Wyznaczenie trasy i jazda nią to **dwa różne etapy** (`NavigationPhase`). Dopóki użytkownik nie naciśnie „Rozpocznij nawigację", aplikacja rysuje trasę, ale milczy i jej nie przelicza — układanie wariantów nie powinno wywoływać zapowiedzi głosowych ani przeliczania po każdym kroku w bok.
+
+Rozdzielenie ma też **bezpośredni skutek dla baterii**. Odległość do najbliższego manewru jest jedynym wejściem, które wprowadza maszynę stanów z sekcji 7 w `CRITICAL` (odpytywanie co sekundę). Podajemy ją wyłącznie w trakcie jazdy — wcześniej sama wyznaczona trasa trzymała odbiornik w najkosztowniejszym trybie, choć rowerzysta stał i wybierał punkty. To było dokładne przeciwieństwo tego, po co ta maszyna stanów istnieje.
+
+Nawigacja kończy się na dwa sposoby: przyciskiem albo dojazdem do celu. Dojazd wykrywamy po **pozostałym dystansie wzdłuż trasy** (`ArrivalDetector`, 35 m), a nie po odległości w linii prostej od celu — ktoś jadący równolegle do końcówki trasy zostałby inaczej uznany za przybyłego, zanim dojedzie.
+
+### 5.0.2 Dane postępu
 
 W trakcie jazdy aplikacja pokazuje, ile trasy jest już za rowerzystą, ile zostało i kiedy będzie na miejscu. Czas dojazdu ma dwa źródła i **aplikacja mówi, którego użyła**:
 

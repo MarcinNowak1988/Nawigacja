@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -63,6 +64,18 @@ class RideDashboard(private val context: Context) {
     lateinit var searchStartButton: Button
         private set
 
+    lateinit var navigationButton: Button
+        private set
+
+    /**
+     * Mapa jako osobne pole, żeby dało się ją schować na czas pisania.
+     *
+     * Sama `adjustResize` nie wystarcza: okno się zmniejsza, ale mapa dalej zabiera ponad
+     * połowę wysokości według wagi w układzie, więc na karty i pole tekstowe zostaje pasek
+     * kilku wierszy. Schowanie mapy oddaje tę wysokość temu, co użytkownik właśnie czyta.
+     */
+    private var mapContainer: View? = null
+
     lateinit var voiceButton: Button
         private set
 
@@ -85,6 +98,7 @@ class RideDashboard(private val context: Context) {
                 mapView,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.5f),
             )
+            mapContainer = mapView
         }
 
         root.addView(
@@ -109,6 +123,11 @@ class RideDashboard(private val context: Context) {
     fun setSpeed(value: String, caption: String) {
         speedValue.text = value
         speedCaption.text = caption
+    }
+
+    /** Chowa mapę, żeby oddać wysokość kartom — używane na czas pisania w wyszukiwarce. */
+    fun setMapVisible(visible: Boolean) {
+        mapContainer?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     // --- budowanie widoków ---
@@ -253,13 +272,24 @@ class RideDashboard(private val context: Context) {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         voiceButton = Button(context).apply {
-            text = "Głos: włączony"
+            text = "Dźwięk: wł."
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         rideActions.addView(profileButton)
         rideActions.addView(voiceButton)
         container.addView(rideActions)
+
+        navigationButton = Button(context).apply {
+            text = "Rozpocznij nawigację"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTypeface(Typeface.DEFAULT_BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        container.addView(navigationButton)
 
         return container
     }
@@ -285,6 +315,8 @@ class RideDashboard(private val context: Context) {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             isSingleLine = true
+            // Klawisz zatwierdzenia szuka punktu trasy — najczęstszy przypadek.
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,

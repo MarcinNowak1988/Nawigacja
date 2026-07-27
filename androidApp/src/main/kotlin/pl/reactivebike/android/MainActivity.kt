@@ -37,7 +37,9 @@ import pl.reactivebike.routing.ManeuverAnnouncer
 import pl.reactivebike.routing.OffRouteDetector
 import pl.reactivebike.routing.Route
 import pl.reactivebike.routing.RouteFailure
+import pl.reactivebike.routing.ArrivalDetector
 import pl.reactivebike.routing.EtaBasis
+import pl.reactivebike.routing.NavigationPhase
 import pl.reactivebike.routing.RouteEta
 import pl.reactivebike.routing.RouteProgress
 import pl.reactivebike.routing.RoutePlan
@@ -128,6 +130,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     /** Rower, na którym jedzie użytkownik — decyduje o rodzaju wyznaczanych tras. */
     private var bicycleProfile = BicycleProfile.TREKKING
 
+    /** Etap przejazdu: układanie trasy, jazda albo dojazd na miejsce. */
+    private var phase = NavigationPhase.PLANNING
+
     private var currentRoute: Route? = null
     private var routeProgress: RouteProgress? = null
     private var routeStatus: String? = null
@@ -138,6 +143,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var textToSpeech: TextToSpeech? = null
     private var voiceReady = false
     private var voiceEnabled = true
+
+    /** Ustawione, gdy syntezator nie ma polskiego głosu — wtedy przycisk mówi o tym wprost. */
+    private var voiceUnavailable = false
 
     private val stormDetector = StormDetector()
     private val offlinePolicy = OfflineWeatherPolicy()
@@ -181,7 +189,10 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.profileButton.setOnClickListener { pickBicycleProfile() }
         dashboard.searchAddButton.setOnClickListener { searchPlace(asStart = false) }
         dashboard.searchStartButton.setOnClickListener { searchPlace(asStart = true) }
+        dashboard.navigationButton.setOnClickListener { toggleNavigation() }
+        setUpSearchField()
         dashboard.voiceButton.setOnClickListener { toggleVoice() }
+        restoreVoicePreference()
 
         setUpVoice()
 
@@ -454,6 +465,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         } else {
             // Bez celu nie ma czego wyznaczać, ale plan może jeszcze mieć punkt startowy —
             // dlatego czyścimy samą trasę, a nie cały plan.
+            phase = NavigationPhase.PLANNING
             currentRoute = null
             routeProgress = null
             routeStatus = null
@@ -513,6 +525,43 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     }
 
     /**
+     * Zachowanie pola wyszukiwania wobec klawiatury.
+     *
+     * Na czas pisania chowamy mapę. Sama `adjustResize` z manifestu zmniejsza okno, ale
+     * mapa dalej zabiera ponad połowę wysokości według wagi w układzie — bez tego na pole
+     * i wyniki zostaje pasek kilku wierszy nad klawiaturą.
+     */
+    private fun setUpSearchField() {
+        dashboard.searchField.setOnFocusChangeListener { view, hasFocus ->
+            dashboard.setMapVisible(!hasFocus)
+            if (hasFocus) {
+                // Przewinięcie odkładamy na później: układ musi się najpierw przeliczyć
+                // po schowaniu mapy, inaczej przewijalibyśmy do położenia sprzed zmiany.
+                view.post {
+                    view.requestRectangleOnScreen(android.graphics.Rect(0, 0, view.width, view.height), false)
+                }
+            }
+        }
+
+        dashboard.searchField.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                searchPlace(asStart = false)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /** Zamyka klawiaturę i oddaje mapie jej miejsce. */
+    private fun dismissKeyboard() {
+        val manager = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+        manager?.hideSoftInputFromWindow(dashboard.searchField.windowToken, 0)
+        dashboard.searchField.clearFocus()
+        dashboard.setMapVisible(true)
+    }
+
+    /**
      * Szuka miejsca po nazwie i dokłada je do planu.
      *
      * @param asStart czy znalezione miejsce ma zostać startem, czy kolejnym punktem trasy
@@ -532,6 +581,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
         searchInFlight = true
         setSearchEnabled(false)
+        dismissKeyboard()
 
         // Bieżąca pozycja podbija trafność wyników: „Rynek" ma znaczyć rynek w okolicy,
         // a nie pierwszy z brzegu na świecie.
@@ -597,6 +647,42 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         syncPlanOnMap()
 
         if (plan.isComplete) requestRoute() else render()
+    }
+
+    /**
+     * Rozpoczyna albo kończy nawigację.
+     *
+     * Rozdzielenie układania trasy od jazdy jest po to, żeby aplikacja nie zaczynała mówić
+     * i przeliczać trasy w chwili, gdy użytkownik dopiero ogląda warianty. Wyznaczona trasa
+     * to jeszcze nie jazda.
+     */
+    private fun toggleNavigation() {
+        if (phase.isGuiding) {
+            stopNavigation(spoken = "Nawigacja zakończona.")
+            return
+        }
+
+        if (currentRoute == null) {
+            Toast.makeText(this, "Najpierw wyznacz trasę — wskaż cel na mapie albo wpisz nazwę.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        phase = NavigationPhase.NAVIGATING
+        announcer.reset()
+        offRouteDetector.reset()
+        dismissKeyboard()
+        mapPanel?.recenter()
+        speak("Nawigacja rozpoczęta.")
+        render()
+    }
+
+    private fun stopNavigation(spoken: String?) {
+        if (!phase.isGuiding) return
+        phase = NavigationPhase.PLANNING
+        announcer.reset()
+        offRouteDetector.reset()
+        spoken?.let { speak(it) }
+        render()
     }
 
     /** Wyznacza trasę dla bieżącego planu. */
@@ -665,6 +751,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
     private fun clearRoute() {
         plan = plan.cleared()
+        // Nie ma trasy, nie ma czym nawigować — inaczej zostalibyśmy w stanie jazdy
+        // bez niczego, po czym można by jechać.
+        phase = NavigationPhase.PLANNING
         currentRoute = null
         routeProgress = null
         routeStatus = null
@@ -684,6 +773,12 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         dashboard.startHereButton.text = if (plan.start != null) "Start: wybrany" else "Start: stąd"
         dashboard.undoStopButton.isEnabled = !plan.isEmpty
         dashboard.clearRouteButton.isEnabled = !plan.isEmpty
+        dashboard.navigationButton.isEnabled = route != null || phase.isGuiding
+        dashboard.navigationButton.text = when {
+            phase.isGuiding -> "Zakończ nawigację"
+            phase == NavigationPhase.ARRIVED -> "Jesteś na miejscu — nawiguj ponownie"
+            else -> "Rozpocznij nawigację"
+        }
 
         if (route == null) {
             dashboard.set(
@@ -794,7 +889,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             if (!voiceReady) {
                 // Brak polskiego głosu nie może wywracać nawigacji — instrukcje zostają
                 // na ekranie, a przycisk mówi wprost, czemu nic nie słychać.
-                handler.post { dashboard.voiceButton.text = "Brak polskiego głosu" }
+                voiceUnavailable = true
+                handler.post { updateVoiceButton() }
             }
         }
     }
@@ -802,7 +898,30 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private fun toggleVoice() {
         voiceEnabled = !voiceEnabled
         if (!voiceEnabled) textToSpeech?.stop()
-        dashboard.voiceButton.text = if (voiceEnabled) "Głos: włączony" else "Głos: wyłączony"
+
+        // Zapamiętane, bo wyciszenie to decyzja o tym, jak się jeździ, a nie ustawienie
+        // na jeden przejazd. Włączanie go od nowa po każdym uruchomieniu byłoby wrogie.
+        getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+            .putBoolean(KEY_VOICE_ENABLED, voiceEnabled)
+            .apply()
+
+        updateVoiceButton()
+    }
+
+    private fun restoreVoicePreference() {
+        voiceEnabled = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+            .getBoolean(KEY_VOICE_ENABLED, true)
+        updateVoiceButton()
+    }
+
+    private fun updateVoiceButton() {
+        // Komunikat o braku polskiego głosu wygrywa ze stanem przełącznika: bez tego
+        // użytkownik widziałby „Dźwięk: wł." i nie słyszałby niczego.
+        dashboard.voiceButton.text = when {
+            voiceUnavailable -> "Brak polskiego głosu"
+            voiceEnabled -> "Dźwięk: wł."
+            else -> "Dźwięk: wył."
+        }
     }
 
     private fun speak(text: String) {
@@ -817,6 +936,18 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
      * mowy i ponowne zapytanie do silnika.
      */
     private fun handleGuidance(progress: RouteProgress) {
+        // Poza jazdą milczymy i nie ruszamy trasy — użytkownik może ją dopiero układać.
+        if (!phase.isGuiding) return
+
+        if (ArrivalDetector.hasArrived(progress)) {
+            phase = NavigationPhase.ARRIVED
+            announcer.reset()
+            offRouteDetector.reset()
+            speak("Dojechałeś do celu.")
+            render()
+            return
+        }
+
         announcer.announce(progress)?.let { speak(it) }
 
         if (offRouteDetector.update(progress)) {
@@ -968,7 +1099,13 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         routeProgress?.let { handleGuidance(it) }
 
         val signals = RideSignals(
-            distanceToManeuverMeters = routeProgress?.distanceToNextManeuverMeters,
+            // Odległość do manewru podajemy wyłącznie w trakcie jazdy. Wcześniej sama
+            // wyznaczona trasa wpychała odbiornik w CRITICAL, czyli w odpytywanie co
+            // sekundę, choć użytkownik dopiero układał trasę i nigdzie nie jechał —
+            // dokładne przeciwieństwo tego, po co jest maszyna stanów z sekcji 7.
+            distanceToManeuverMeters = routeProgress
+                ?.takeIf { phase.isGuiding }
+                ?.distanceToNextManeuverMeters,
             speedKmh = speedKmh,
             screenOn = screenOn,
             motionDetected = motionDetected,

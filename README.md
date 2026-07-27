@@ -50,7 +50,10 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 - **profile rowerowe** — miejski, trekkingowy, górski i szosowy; pogoda może zaostrzyć
   wymagania profilu, ale nigdy ich nie rozluźnia,
 - **dane postępu** — ile trasy za nami, ile zostało i szacowany czas dojazdu liczony
-  z tempa rowerzysty, a na postoju z planu silnika.
+  z tempa rowerzysty, a na postoju z planu silnika,
+- **etapy przejazdu i wykrywanie dojazdu** — układanie trasy jest oddzielone od jazdy nią,
+  więc zapowiedzi, przeliczanie trasy i najkosztowniejszy tryb GPS włączają się dopiero
+  po rozpoczęciu nawigacji.
 
 **`geocoding`**
 
@@ -107,7 +110,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.10.0 && git push origin v0.10.0
+git tag v0.11.0 && git push origin v0.11.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**
