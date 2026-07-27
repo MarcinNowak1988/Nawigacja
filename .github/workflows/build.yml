@@ -31,7 +31,6 @@ jobs:
       # Moduł `shared` deklaruje wyłącznie target `jvm`, więc build przechodzi
       # na zwykłym runnerze Linux — bez Android SDK i bez Xcode.
       - name: Kompilacja i testy
-        env:
         run: ./gradlew build --no-daemon
 
       - name: Publikacja raportów z testów
