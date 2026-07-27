@@ -11,7 +11,9 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
@@ -50,6 +52,15 @@ class MapPanel(context: Context) {
 
     private val track = mutableListOf<Point>()
     private var followPosition = true
+
+    /**
+     * Punkty planu, żeby dało się je narysować ponownie.
+     *
+     * Wczytanie stylu — także zapasowego po nieudanym pobraniu podstawowego — tworzy warstwy
+     * od nowa i gubi ich zawartość. Bez zapamiętania punkty znikałyby z mapy, mimo że plan
+     * dalej istnieje.
+     */
+    private var stopsToDraw: List<pl.reactivebike.routing.PlannedStop> = emptyList()
 
     /** Wywoływane po długim naciśnięciu mapy — tak użytkownik wskazuje cel trasy. */
     var onDestinationPicked: ((Double, Double) -> Unit)? = null
@@ -118,6 +129,7 @@ class MapPanel(context: Context) {
             styleReady = true
             addLayers(style)
             redraw(style)
+            if (stopsToDraw.isNotEmpty()) showStops(stopsToDraw)
         }
     }
 
@@ -155,10 +167,21 @@ class MapPanel(context: Context) {
             style.addSource(org.maplibre.android.style.sources.GeoJsonSource(SOURCE_DESTINATION))
             style.addLayer(
                 CircleLayer(LAYER_DESTINATION, SOURCE_DESTINATION).withProperties(
-                    PropertyFactory.circleRadius(9f),
-                    PropertyFactory.circleColor(DESTINATION_COLOR),
+                    PropertyFactory.circleRadius(11f),
+                    // Kolor bierzemy z cechy punktu, a nie z osobnej warstwy na rolę —
+                    // jedno źródło i jedna warstwa zamiast trzech, które trzeba synchronizować.
+                    PropertyFactory.circleColor(Expression.get(PROPERTY_STOP_COLOR)),
                     PropertyFactory.circleStrokeWidth(3f),
                     PropertyFactory.circleStrokeColor(Color.WHITE),
+                ),
+            )
+            style.addLayer(
+                SymbolLayer(LAYER_STOP_LABELS, SOURCE_DESTINATION).withProperties(
+                    PropertyFactory.textField(Expression.get(PROPERTY_STOP_LABEL)),
+                    PropertyFactory.textSize(11f),
+                    PropertyFactory.textColor(Color.WHITE),
+                    PropertyFactory.textAllowOverlap(true),
+                    PropertyFactory.textIgnorePlacement(true),
                 ),
             )
         }
@@ -175,8 +198,8 @@ class MapPanel(context: Context) {
         }
     }
 
-    /** Rysuje wyznaczoną trasę wraz z punktem docelowym. */
-    fun showRoute(geometry: List<pl.reactivebike.routing.GeoPoint>, destination: pl.reactivebike.routing.GeoPoint?) {
+    /** Rysuje wyznaczoną trasę. Punkty planu rysuje [showStops] — są od trasy niezależne. */
+    fun showRoute(geometry: List<pl.reactivebike.routing.GeoPoint>) {
         val style = map?.style ?: return
 
         if (geometry.size >= 2) {
@@ -184,16 +207,54 @@ class MapPanel(context: Context) {
             (style.getSource(SOURCE_ROUTE) as? org.maplibre.android.style.sources.GeoJsonSource)
                 ?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(points)))
         }
-
-        destination?.let {
-            (style.getSource(SOURCE_DESTINATION) as? org.maplibre.android.style.sources.GeoJsonSource)
-                ?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)))
-        }
     }
 
-    /** Zdejmuje trasę i punkt docelowy z mapy. */
+    /**
+     * Rysuje punkty planu: start, pośrednie i cel.
+     *
+     * Punkty żyją własnym życiem, niezależnie od linii trasy — użytkownik ma je widzieć
+     * także wtedy, gdy trasa jeszcze się liczy albo w ogóle nie da się jej wyznaczyć.
+     * Rolę niesie kolor, a kolejność — podpis, bo przy kilku punktach sam kolor przestaje
+     * wystarczać do odczytania, którędy trasa ma prowadzić.
+     */
+    fun showStops(stops: List<pl.reactivebike.routing.PlannedStop>) {
+        val style = map?.style ?: return
+        stopsToDraw = stops
+
+        val features = stops.mapIndexed { index, stop ->
+            Feature.fromGeometry(Point.fromLngLat(stop.point.longitude, stop.point.latitude)).apply {
+                addStringProperty(PROPERTY_STOP_COLOR, colorOf(stop.role))
+                addStringProperty(PROPERTY_STOP_LABEL, labelOf(stop, index, stops))
+            }
+        }
+
+        (style.getSource(SOURCE_DESTINATION) as? org.maplibre.android.style.sources.GeoJsonSource)
+            ?.setGeoJson(FeatureCollection.fromFeatures(features))
+    }
+
+    private fun colorOf(role: pl.reactivebike.routing.StopRole): String = when (role) {
+        pl.reactivebike.routing.StopRole.START -> START_COLOR
+        pl.reactivebike.routing.StopRole.VIA -> VIA_COLOR
+        pl.reactivebike.routing.StopRole.DESTINATION -> DESTINATION_COLOR
+    }
+
+    private fun labelOf(
+        stop: pl.reactivebike.routing.PlannedStop,
+        index: Int,
+        stops: List<pl.reactivebike.routing.PlannedStop>,
+    ): String = when (stop.role) {
+        pl.reactivebike.routing.StopRole.START -> "S"
+        pl.reactivebike.routing.StopRole.DESTINATION -> "META"
+        // Numerujemy wyłącznie punkty pośrednie, żeby „1" znaczyło pierwszy przystanek,
+        // a nie pierwszy punkt na liście — start bywa, a bywa i nie.
+        pl.reactivebike.routing.StopRole.VIA ->
+            (stops.take(index).count { it.role == pl.reactivebike.routing.StopRole.VIA } + 1).toString()
+    }
+
+    /** Zdejmuje trasę i punkty planu z mapy. */
     fun clearRoute() {
         val style = map?.style ?: return
+        stopsToDraw = emptyList()
         val empty = FeatureCollection.fromFeatures(emptyList())
         (style.getSource(SOURCE_ROUTE) as? org.maplibre.android.style.sources.GeoJsonSource)?.setGeoJson(empty)
         (style.getSource(SOURCE_DESTINATION) as? org.maplibre.android.style.sources.GeoJsonSource)?.setGeoJson(empty)
@@ -264,6 +325,9 @@ class MapPanel(context: Context) {
         const val LAYER_ROUTE = "rb-route-layer"
         const val SOURCE_DESTINATION = "rb-destination-source"
         const val LAYER_DESTINATION = "rb-destination-layer"
+        const val LAYER_STOP_LABELS = "rb-stop-labels-layer"
+        const val PROPERTY_STOP_COLOR = "rb-stop-color"
+        const val PROPERTY_STOP_LABEL = "rb-stop-label"
         const val SOURCE_TRACK = "rb-track-source"
         const val LAYER_TRACK = "rb-track-layer"
 
@@ -277,7 +341,12 @@ class MapPanel(context: Context) {
 
         val POSITION_COLOR = Color.parseColor("#2563EB")
         val ROUTE_COLOR = Color.parseColor("#7C3AED")
-        val DESTINATION_COLOR = Color.parseColor("#DC2626")
         val TRACK_COLOR = Color.parseColor("#F97316")
+
+        // Kolory punktow planu jako tekst — trafiaja do cech GeoJSON, ktore MapLibre
+        // czyta wyrazeniem, a nie jako liczby ARGB.
+        const val START_COLOR = "#059669"
+        const val VIA_COLOR = "#D97706"
+        const val DESTINATION_COLOR = "#DC2626"
     }
 }

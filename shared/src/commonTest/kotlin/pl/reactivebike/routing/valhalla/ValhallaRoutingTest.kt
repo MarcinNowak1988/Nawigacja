@@ -47,45 +47,98 @@ class ValhallaRoutingTest {
         assertTrue(firstIndex < viaIndex && viaIndex < lastIndex, body)
     }
 
-    // --- odwzorowanie pogody na profil ---
+    // --- profil roweru i pogoda ---
 
     @Test
-    fun `sucha pogoda slabo odstrasza zle nawierzchnie`() {
-        val dry = BicycleCosting.forConditions(WeatherConditions(precipitationMm = 0.0))
+    fun `profil uzytkownika trafia do zapytania`() {
+        val body = ValhallaRouting.buildRequest(request, BicycleProfile.MOUNTAIN)
 
-        assertEquals(0.25, dry.avoidBadSurfaces)
+        assertTrue(body.contains("\"bicycle_type\":\"Mountain\""), body)
+    }
+
+    @Test
+    fun `rower gorski znosi zle nawierzchnie duzo lepiej niz szosowy`() {
+        val mountain = BicycleCosting.forRide(BicycleProfile.MOUNTAIN, null)
+        val road = BicycleCosting.forRide(BicycleProfile.ROAD, null)
+
+        assertTrue(mountain.avoidBadSurfaces < road.avoidBadSurfaces)
+        assertTrue(mountain.useHills > road.useHills)
+    }
+
+    @Test
+    fun `sucha pogoda zostawia profil bez zmian`() {
+        val dry = BicycleCosting.forRide(BicycleProfile.TREKKING, WeatherConditions(precipitationMm = 0.0))
+
+        assertEquals(BicycleProfile.TREKKING.avoidBadSurfaces, dry.avoidBadSurfaces)
     }
 
     @Test
     fun `ulewa maksymalnie odstrasza zle nawierzchnie`() {
-        val downpour = BicycleCosting.forConditions(WeatherConditions(precipitationMm = 6.0))
+        val downpour = BicycleCosting.forRide(BicycleProfile.TREKKING, WeatherConditions(precipitationMm = 6.0))
 
         assertEquals(1.0, downpour.avoidBadSurfaces)
-        assertEquals("Road", downpour.bicycleType)
     }
 
     @Test
     fun `im gorsza pogoda tym mocniejsze odstraszanie`() {
-        val dry = BicycleCosting.forConditions(WeatherConditions(precipitationMm = 0.0))
-        val rain = BicycleCosting.forConditions(WeatherConditions(precipitationMm = 1.0))
-        val downpour = BicycleCosting.forConditions(WeatherConditions(precipitationMm = 6.0))
+        fun avoid(mm: Double) =
+            BicycleCosting.forRide(BicycleProfile.TREKKING, WeatherConditions(precipitationMm = mm)).avoidBadSurfaces
 
-        assertTrue(
-            dry.avoidBadSurfaces < rain.avoidBadSurfaces &&
-                rain.avoidBadSurfaces < downpour.avoidBadSurfaces,
-        )
+        assertTrue(avoid(0.0) < avoid(1.0) && avoid(1.0) < avoid(6.0))
     }
 
     @Test
     fun `mroz tez odstrasza zle nawierzchnie`() {
-        val frost = BicycleCosting.forConditions(WeatherConditions(temperatureCelsius = -3.0))
+        val frost = BicycleCosting.forRide(BicycleProfile.TREKKING, WeatherConditions(temperatureCelsius = -3.0))
 
-        assertTrue(frost.avoidBadSurfaces > 0.25)
+        assertTrue(frost.avoidBadSurfaces > BicycleProfile.TREKKING.avoidBadSurfaces)
     }
 
     @Test
-    fun `brak danych pogodowych daje ustawienia domyslne`() {
-        assertEquals(0.25, BicycleCosting.forConditions(null).avoidBadSurfaces)
+    fun `brak danych pogodowych daje ustawienia profilu`() {
+        val options = BicycleCosting.forRide(BicycleProfile.CITY, null)
+
+        assertEquals(BicycleProfile.CITY.avoidBadSurfaces, options.avoidBadSurfaces)
+        assertEquals(BicycleProfile.CITY.useRoads, options.useRoads)
+    }
+
+    /**
+     * Pogoda działa wyłącznie podwyższająco — tak jak wagi krawędzi z ADR-0002.
+     * Rower szosowy nie ma trafić na szuter dlatego, że akurat pada.
+     */
+    @Test
+    fun `pogoda nigdy nie rozluznia wymagan profilu`() {
+        val conditions = listOf(
+            null,
+            WeatherConditions(precipitationMm = 0.0),
+            WeatherConditions(precipitationMm = 1.0),
+            WeatherConditions(precipitationMm = 6.0),
+            WeatherConditions(temperatureCelsius = -3.0),
+        )
+
+        BicycleProfile.entries.forEach { profile ->
+            conditions.forEach { weather ->
+                val options = BicycleCosting.forRide(profile, weather)
+                assertTrue(
+                    options.avoidBadSurfaces >= profile.avoidBadSurfaces,
+                    "$profile przy $weather zjechal do ${options.avoidBadSurfaces}",
+                )
+                assertTrue(
+                    options.useRoads >= profile.useRoads,
+                    "$profile przy $weather zjechal do ${options.useRoads}",
+                )
+            }
+        }
+    }
+
+    /** Wcześniej ulewa przestawiała `bicycle_type` na Road, zmieniając rower użytkownika. */
+    @Test
+    fun `pogoda nie zmienia typu roweru`() {
+        BicycleProfile.entries.forEach { profile ->
+            val downpour = BicycleCosting.forRide(profile, WeatherConditions(precipitationMm = 6.0))
+
+            assertEquals(profile.valhallaType, downpour.bicycleType, "$profile")
+        }
     }
 
     // --- parsowanie odpowiedzi ---

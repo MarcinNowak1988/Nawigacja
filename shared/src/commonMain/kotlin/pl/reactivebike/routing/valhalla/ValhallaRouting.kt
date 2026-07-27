@@ -28,13 +28,24 @@ object ValhallaRouting {
     /** Publiczna instancja utrzymywana przez FOSSGIS dla społeczności OSM. Bez klucza API. */
     const val PUBLIC_ENDPOINT = "https://valhalla1.openstreetmap.de/route"
 
-    /** Treść żądania POST. */
-    fun buildRequest(request: RouteRequest, conditions: WeatherConditions? = null): String =
+    /**
+     * Treść żądania POST.
+     *
+     * Wszystkie punkty jadą jako `break`: każdy dostaje własny odcinek i własne manewry,
+     * a Valhalla może w nich zawrócić. Alternatywa (`through`) prowadzi trasę przez punkt
+     * bez możliwości zawrócenia, co przy punkcie wskazanym palcem na drodze jednokierunkowej
+     * potrafi wygenerować wielokilometrową pętlę zamiast powiedzieć „tędy nie da się".
+     */
+    fun buildRequest(
+        request: RouteRequest,
+        profile: BicycleProfile = BicycleProfile.TREKKING,
+        conditions: WeatherConditions? = null,
+    ): String =
         json.encodeToString(
             ValhallaRequest.serializer(),
             ValhallaRequest(
                 locations = request.waypoints.map { ValhallaLocation(it.latitude, it.longitude) },
-                costingOptions = ValhallaCostingOptions(BicycleCosting.forConditions(conditions)),
+                costingOptions = ValhallaCostingOptions(BicycleCosting.forRide(profile, conditions)),
             ),
         )
 
@@ -102,7 +113,37 @@ object ValhallaRouting {
 }
 
 /**
- * Odwzorowanie warunków pogodowych na opcje profilu rowerowego Valhalli.
+ * Rower, na którym jedzie użytkownik.
+ *
+ * Trasa rowerowa to nie jedna kategoria: szosówka i rower górski jadące między tymi samymi
+ * punktami powinny dostać różne trasy, bo co dla jednego jest skrótem, dla drugiego jest
+ * końcem przejazdu. Profil wybiera użytkownik i to on ustala punkt wyjścia dla wag.
+ *
+ * @property valhallaType wartość pola `bicycle_type` w profilu rowerowym Valhalli
+ * @property label nazwa do pokazania użytkownikowi
+ */
+enum class BicycleProfile(
+    val valhallaType: String,
+    val label: String,
+    internal val avoidBadSurfaces: Double,
+    internal val useRoads: Double,
+    internal val useHills: Double,
+) {
+    /** Miejski: gładka nawierzchnia, drogi dla rowerów, płasko. */
+    CITY("City", "Miejski", avoidBadSurfaces = 0.7, useRoads = 0.3, useHills = 0.25),
+
+    /** Trekkingowy: kompromis — domyślny, bo znosi wszystko po trochu. */
+    TREKKING("Hybrid", "Trekkingowy", avoidBadSurfaces = 0.25, useRoads = 0.4, useHills = 0.4),
+
+    /** Górski: szuter i ścieżki są zaletą, podjazdy nie odstraszają. */
+    MOUNTAIN("Mountain", "Górski", avoidBadSurfaces = 0.05, useRoads = 0.2, useHills = 0.6),
+
+    /** Szosowy: asfalt albo nic. */
+    ROAD("Road", "Szosowy", avoidBadSurfaces = 1.0, useRoads = 0.6, useHills = 0.4),
+}
+
+/**
+ * Odwzorowanie profilu roweru i warunków pogodowych na opcje trasowania Valhalli.
  *
  * **To jest przybliżenie.** Model wag z sekcji 5 pozwala odstraszać dowolną nawierzchnię
  * z dowolną siłą; publiczna Valhalla przyjmuje wyłącznie kilka predefiniowanych pokręteł.
@@ -111,27 +152,37 @@ object ValhallaRouting {
  */
 object BicycleCosting {
 
-    fun forConditions(conditions: WeatherConditions?): BicycleOptions = when {
-        conditions == null -> BicycleOptions(avoidBadSurfaces = 0.25)
-
-        conditions.isHeavyRain -> BicycleOptions(
-            bicycleType = "Road",
-            avoidBadSurfaces = 1.0,
-            useRoads = 0.6,
+    /**
+     * Łączy wybór użytkownika z pogodą.
+     *
+     * Pogoda działa **wyłącznie podwyższająco** — tak samo jak wagi krawędzi z ADR-0002.
+     * Deszcz może kazać mocniej omijać błoto, ale nigdy nie rozluźni wymagań roweru
+     * szosowego, bo to nie pogoda decyduje, jakie opony ma użytkownik.
+     *
+     * Nie zmieniamy też `bicycle_type`: wcześniej ulewa przestawiała go na `Road`, przez co
+     * rower górski dostawał trasę dla szosówki. Rower użytkownika nie zmienia się od tego,
+     * że zaczęło padać.
+     */
+    fun forRide(profile: BicycleProfile, conditions: WeatherConditions?): BicycleOptions {
+        val floor = weatherFloor(conditions)
+        return BicycleOptions(
+            bicycleType = profile.valhallaType,
+            avoidBadSurfaces = maxOf(profile.avoidBadSurfaces, floor.avoidBadSurfaces),
+            useRoads = maxOf(profile.useRoads, floor.useRoads),
+            useHills = profile.useHills,
         )
-
-        conditions.isRaining -> BicycleOptions(
-            avoidBadSurfaces = 0.8,
-            useRoads = 0.5,
-        )
-
-        conditions.isFreezing -> BicycleOptions(
-            avoidBadSurfaces = 0.8,
-            useRoads = 0.4,
-        )
-
-        else -> BicycleOptions(avoidBadSurfaces = 0.25)
     }
+
+    /** Dolna granica, poniżej której pogoda nie pozwala zejść. Brak danych = brak granicy. */
+    private fun weatherFloor(conditions: WeatherConditions?): WeatherFloor = when {
+        conditions == null -> WeatherFloor(0.0, 0.0)
+        conditions.isHeavyRain -> WeatherFloor(avoidBadSurfaces = 1.0, useRoads = 0.6)
+        conditions.isRaining -> WeatherFloor(avoidBadSurfaces = 0.8, useRoads = 0.5)
+        conditions.isFreezing -> WeatherFloor(avoidBadSurfaces = 0.8, useRoads = 0.4)
+        else -> WeatherFloor(0.0, 0.0)
+    }
+
+    private data class WeatherFloor(val avoidBadSurfaces: Double, val useRoads: Double)
 }
 
 @Serializable

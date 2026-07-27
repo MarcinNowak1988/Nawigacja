@@ -43,6 +43,15 @@ class RideDashboard(private val context: Context) {
     lateinit var clearRouteButton: Button
         private set
 
+    lateinit var undoStopButton: Button
+        private set
+
+    lateinit var startHereButton: Button
+        private set
+
+    lateinit var profileButton: Button
+        private set
+
     lateinit var voiceButton: Button
         private set
 
@@ -154,9 +163,11 @@ class RideDashboard(private val context: Context) {
             TextView(context).apply {
                 // ADR-0007 mówi wprost, że tego nie wolno przemilczeć: bez zasięgu zostaje
                 // mapa z komputerem rowerowym, a nie nawigacja.
-                text = "Przytrzymaj palec na mapie, żeby wyznaczyć trasę. Wyznaczanie trasy " +
-                    "wymaga zasięgu. Pobrany obszar wyświetli się bez sieci — razem " +
-                    "z pozycją, prędkością i ciśnieniem — ale trasy w nim nie wyznaczysz."
+                text = "Przytrzymaj palec na mapie, żeby dodać punkt trasy. Pierwszy punkt " +
+                    "to cel, każdy następny przesuwa cel dalej — kolejność wskazywania " +
+                    "jest kolejnością jazdy. Wyznaczanie trasy wymaga zasięgu; pobrany " +
+                    "obszar wyświetli się bez sieci razem z pozycją, prędkością " +
+                    "i ciśnieniem, ale trasy w nim nie wyznaczysz."
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTextColor(MUTED)
                 setPadding(dp(4), dp(14), dp(4), 0)
@@ -175,28 +186,58 @@ class RideDashboard(private val context: Context) {
         }
     }
 
-    /** Karta trasy — pokazuje cel, najbliższy manewr i to, co zostało do przejechania. */
+    /**
+     * Karta trasy — plan przejazdu, najbliższy manewr i to, co zostało do przejechania.
+     *
+     * Akcje planu (start, cofnięcie, wyczyszczenie) są w osobnym rzędzie nad akcjami jazdy
+     * (rower, głos), bo dotyczą różnych momentów: plan układa się przed startem, a głos
+     * i rower zmienia się w trakcie.
+     */
     private fun routeCard(): LinearLayout {
-        val container = card("Trasa", listOf(KEY_ROUTE_SUMMARY, KEY_NEXT_MANEUVER, KEY_ROUTE_REMAINING))
+        val container = card(
+            "Trasa",
+            listOf(KEY_ROUTE_PLAN, KEY_ROUTE_SUMMARY, KEY_NEXT_MANEUVER, KEY_ROUTE_REMAINING, KEY_BICYCLE_PROFILE),
+        )
 
-        val actions = LinearLayout(context).apply {
+        val planActions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(8), 0, 0)
         }
+        startHereButton = Button(context).apply {
+            text = "Start: stąd"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        undoStopButton = Button(context).apply {
+            text = "Cofnij punkt"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        clearRouteButton = Button(context).apply {
+            text = "Wyczyść"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        planActions.addView(startHereButton)
+        planActions.addView(undoStopButton)
+        planActions.addView(clearRouteButton)
+        container.addView(planActions)
 
+        val rideActions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        profileButton = Button(context).apply {
+            text = "Trekkingowy"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
         voiceButton = Button(context).apply {
             text = "Głos: włączony"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        clearRouteButton = Button(context).apply {
-            text = "Usuń trasę"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        }
-
-        actions.addView(voiceButton)
-        actions.addView(clearRouteButton)
-        container.addView(actions)
+        rideActions.addView(profileButton)
+        rideActions.addView(voiceButton)
+        container.addView(rideActions)
 
         return container
     }
@@ -294,6 +335,8 @@ class RideDashboard(private val context: Context) {
         const val KEY_WIND = "wind"
         const val KEY_WEATHER_AGE = "weatherAge"
 
+        const val KEY_ROUTE_PLAN = "routePlan"
+        const val KEY_BICYCLE_PROFILE = "bicycleProfile"
         const val KEY_ROUTE_SUMMARY = "routeSummary"
         const val KEY_NEXT_MANEUVER = "nextManeuver"
         const val KEY_ROUTE_REMAINING = "routeRemaining"

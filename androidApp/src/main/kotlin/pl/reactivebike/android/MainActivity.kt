@@ -36,9 +36,11 @@ import pl.reactivebike.routing.OffRouteDetector
 import pl.reactivebike.routing.Route
 import pl.reactivebike.routing.RouteFailure
 import pl.reactivebike.routing.RouteProgress
+import pl.reactivebike.routing.RoutePlan
 import pl.reactivebike.routing.RouteRequest
 import pl.reactivebike.routing.RouteResult
 import pl.reactivebike.routing.RouteTracker
+import pl.reactivebike.routing.valhalla.BicycleProfile
 import pl.reactivebike.weather.CachedWeatherWeights
 import pl.reactivebike.weather.LocalWeightsTranslator
 import pl.reactivebike.weather.OfflineWeatherPolicy
@@ -114,7 +116,12 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private val routeEngine = HttpRouteEngine()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private var destination: GeoPoint? = null
+    /** Plan przejazdu: start, punkty pośrednie i cel. Jedyne źródło prawdy o trasie. */
+    private var plan = RoutePlan()
+
+    /** Rower, na którym jedzie użytkownik — decyduje o rodzaju wyznaczanych tras. */
+    private var bicycleProfile = BicycleProfile.TREKKING
+
     private var currentRoute: Route? = null
     private var routeProgress: RouteProgress? = null
     private var routeStatus: String? = null
@@ -161,8 +168,11 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
 
         setUpOfflineMaps(panel, mapError)
 
-        panel?.onDestinationPicked = { lat, lon -> requestRoute(GeoPoint(lat, lon)) }
+        panel?.onDestinationPicked = { lat, lon -> addStop(GeoPoint(lat, lon)) }
         dashboard.clearRouteButton.setOnClickListener { clearRoute() }
+        dashboard.undoStopButton.setOnClickListener { undoStop() }
+        dashboard.startHereButton.setOnClickListener { toggleStart() }
+        dashboard.profileButton.setOnClickListener { pickBicycleProfile() }
         dashboard.voiceButton.setOnClickListener { toggleVoice() }
 
         setUpVoice()
@@ -404,16 +414,109 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         true
     }
 
-    /** Wyznacza trasę z bieżącej pozycji do wskazanego punktu. */
-    private fun requestRoute(target: GeoPoint) {
-        val from = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
-        if (from == null) {
-            Toast.makeText(this, "Czekam na pozycję — bez niej nie ma skąd wyznaczyć trasy.", Toast.LENGTH_SHORT).show()
+    /**
+     * Dokłada wskazany punkt do planu i przelicza trasę.
+     *
+     * Jeden gest buduje całą trasę: pierwszy punkt to cel, każdy następny przesuwa
+     * dotychczasowy cel do punktów pośrednich. Kolejność wskazywania jest kolejnością jazdy.
+     */
+    private fun addStop(point: GeoPoint) {
+        val extended = plan.withNextStop(point)
+        if (extended == null) {
+            Toast.makeText(
+                this,
+                "Limit ${RoutePlan.MAX_WAYPOINTS} punktów na trasę — usuń któryś, żeby dodać nowy.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        plan = extended
+        syncPlanOnMap()
+        requestRoute()
+    }
+
+    /** Cofa ostatnio wskazany punkt. */
+    private fun undoStop() {
+        if (plan.isEmpty) return
+        plan = plan.withoutLastStop()
+
+        if (plan.isComplete) {
+            syncPlanOnMap()
+            requestRoute()
+        } else {
+            // Bez celu nie ma czego wyznaczać, ale plan może jeszcze mieć punkt startowy —
+            // dlatego czyścimy samą trasę, a nie cały plan.
+            currentRoute = null
+            routeProgress = null
+            routeStatus = null
+            mapPanel?.clearRoute()
+            syncPlanOnMap()
+            render()
+        }
+    }
+
+    /**
+     * Odrysowuje punkty planu na mapie.
+     *
+     * Wywoływane przy każdej zmianie planu, niezależnie od tego, czy da się już wyznaczyć
+     * trasę. Wskazany punkt ma się pojawić od razu — także wtedy, gdy GPS jeszcze nie złapał
+     * pozycji albo nie ma zasięgu i trasy nie będzie.
+     */
+    private fun syncPlanOnMap() {
+        mapPanel?.showStops(plan.stops())
+    }
+
+    /** Przełącza start między bieżącą pozycją a punktem wskazanym na mapie. */
+    private fun toggleStart() {
+        if (plan.start != null) {
+            plan = plan.startingFromCurrentPosition()
+        } else {
+            val here = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
+            if (here == null) {
+                Toast.makeText(this, "Czekam na pozycję — nie ma czego zapamiętać jako start.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            // Start „stąd" zamraża bieżącą pozycję, dzięki czemu trasa zostaje policzona
+            // od miejsca, w którym stoi rowerzysta, nawet gdy ruszy przed jej wyznaczeniem.
+            plan = plan.withStart(here)
+        }
+
+        syncPlanOnMap()
+        if (plan.isComplete) requestRoute() else render()
+    }
+
+    /** Pozwala wybrać rower — ta sama para punktów daje inną trasę dla szosówki i „górala". */
+    private fun pickBicycleProfile() {
+        val profiles = BicycleProfile.entries
+        AlertDialog.Builder(this)
+            .setTitle("Rodzaj roweru")
+            .setSingleChoiceItems(
+                profiles.map { it.label }.toTypedArray(),
+                profiles.indexOf(bicycleProfile),
+            ) { dialog, which ->
+                dialog.dismiss()
+                if (profiles[which] != bicycleProfile) {
+                    bicycleProfile = profiles[which]
+                    if (plan.isComplete) requestRoute() else render()
+                }
+            }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+
+    /** Wyznacza trasę dla bieżącego planu. */
+    private fun requestRoute() {
+        val here = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
+        val waypoints = plan.waypoints(here)
+        if (waypoints == null) {
+            if (plan.isComplete) {
+                Toast.makeText(this, "Czekam na pozycję — bez niej nie ma skąd wyznaczyć trasy.", Toast.LENGTH_SHORT).show()
+            }
+            render()
             return
         }
         if (routeRequestInFlight) return
 
-        destination = target
         announcer.reset()
         offRouteDetector.reset()
 
@@ -423,33 +526,39 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             currentRoute = null
             routeStatus = "Brak sieci — wyznaczanie trasy wymaga połączenia. " +
                 "Pobrana mapa i pozycja działają dalej."
-            mapPanel?.showRoute(emptyList(), target)
+            mapPanel?.showRoute(emptyList())
             render()
             return
         }
 
         routeRequestInFlight = true
         routeStatus = "Wyznaczam trasę…"
-        mapPanel?.showRoute(emptyList(), target)
+        mapPanel?.showRoute(emptyList())
         render()
 
         routeEngine.conditions = conditions
+        routeEngine.profile = bicycleProfile
 
         scope.launch {
-            val result = routeEngine.route(RouteRequest(listOf(from, target)))
+            val result = routeEngine.route(RouteRequest(waypoints))
             routeRequestInFlight = false
 
             when (result) {
                 is RouteResult.Success -> {
                     currentRoute = result.route
                     routeStatus = null
-                    mapPanel?.showRoute(result.route.geometry, target)
+                    mapPanel?.showRoute(result.route.geometry)
                 }
 
                 is RouteResult.Failure -> {
                     currentRoute = null
                     routeStatus = when (result.reason) {
-                        RouteFailure.NO_ROUTE_FOUND -> "Nie znalazłem trasy do tego punktu."
+                        RouteFailure.NO_ROUTE_FOUND ->
+                            if (plan.via.isEmpty()) {
+                                "Nie znalazłem trasy rowerowej do tego punktu."
+                            } else {
+                                "Nie znalazłem trasy rowerowej przez wszystkie wskazane punkty."
+                            }
                         RouteFailure.MISSING_MAP_DATA -> "Brak danych mapowych dla tego obszaru."
                         RouteFailure.ENGINE_ERROR -> "Trasowanie niedostępne — sprawdź połączenie."
                     }
@@ -460,7 +569,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     }
 
     private fun clearRoute() {
-        destination = null
+        plan = plan.cleared()
         currentRoute = null
         routeProgress = null
         routeStatus = null
@@ -474,18 +583,23 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         val route = currentRoute
         val status = routeStatus
 
+        dashboard.set(RideDashboard.KEY_ROUTE_PLAN, plan.describe())
+        dashboard.set(RideDashboard.KEY_BICYCLE_PROFILE, "Rower: ${bicycleProfile.label}")
+        dashboard.profileButton.text = bicycleProfile.label
+        dashboard.startHereButton.text = if (plan.start != null) "Start: wybrany" else "Start: stąd"
+        dashboard.undoStopButton.isEnabled = !plan.isEmpty
+        dashboard.clearRouteButton.isEnabled = !plan.isEmpty
+
         if (route == null) {
             dashboard.set(
                 RideDashboard.KEY_ROUTE_SUMMARY,
-                status ?: "Brak trasy. Przytrzymaj palec na mapie, żeby wskazać cel.",
+                status ?: "Przytrzymaj palec na mapie, żeby dodać punkt trasy.",
             )
             dashboard.set(RideDashboard.KEY_NEXT_MANEUVER, null)
             dashboard.set(RideDashboard.KEY_ROUTE_REMAINING, null)
-            dashboard.clearRouteButton.isEnabled = destination != null
             return
         }
 
-        dashboard.clearRouteButton.isEnabled = true
         dashboard.set(
             RideDashboard.KEY_ROUTE_SUMMARY,
             "${formatDistance(route.distanceMeters)}, ok. ${formatDuration(route.estimatedDurationSeconds)}",
@@ -554,9 +668,9 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         announcer.announce(progress)?.let { speak(it) }
 
         if (offRouteDetector.update(progress)) {
-            val target = destination ?: return
+            if (!plan.isComplete) return
             speak("Zjechałeś z trasy. Wyznaczam nową.")
-            requestRoute(target)
+            requestRoute()
         }
     }
 
@@ -613,7 +727,23 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         lastLocation = location
         lastFixAtMillis = System.currentTimeMillis()
         mapPanel?.updatePosition(location.latitude, location.longitude)
+        consumeReachedStops(GeoPoint(location.latitude, location.longitude))
         requestWeather(force = false)
+    }
+
+    /**
+     * Zdejmuje z planu punkty pośrednie, które rowerzysta ma już za sobą.
+     *
+     * Bez tego przeliczenie trasy po zjechaniu z niej zawracałoby do minietych punktów.
+     * Samej trasy tu nie przeliczamy — ona już przez ten punkt prowadzi, więc nie ma czego
+     * poprawiać; chodzi wyłącznie o to, żeby następne wyznaczenie ruszyło do przodu.
+     */
+    private fun consumeReachedStops(position: GeoPoint) {
+        val remaining = plan.consumingReachedVia(position)
+        if (remaining == plan) return
+
+        plan = remaining
+        syncPlanOnMap()
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit

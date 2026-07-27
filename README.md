@@ -12,7 +12,8 @@ prędkością, ciśnieniem i Storm Mode. Powody i koszty tej decyzji opisuje
 [ADR-0007](docs/adr/0007-aplikacja-online-z-zapisanymi-regionami.md).
 
 > **Status: alfa.** Aplikacja androidowa jeździ: mapa, pozycja, ślad przejazdu,
-> wyznaczanie trasy, zapowiedzi manewrów głosem, pogoda i zapisywanie regionów mapy.
+> nawigacja z punktu A do B z punktami pośrednimi, wybór rodzaju roweru, zapowiedzi
+> manewrów głosem, pogoda i zapisywanie regionów mapy.
 > Modułu iOS ani modułu AI z sekcji 6 jeszcze nie ma.
 
 ## Dokumentacja
@@ -42,7 +43,11 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
   trasowania ([ADR-0001](docs/adr/0001-silnik-trasowania-per-platforma.md)); dziś stoi
   za nią klient Valhalli,
 - **postęp na trasie i zapowiedzi manewrów** — dystans do najbliższego manewru, progi
-  zapowiedzi i wykrywanie zjechania z trasy.
+  zapowiedzi i wykrywanie zjechania z trasy,
+- **plan przejazdu** — start, punkty pośrednie i cel, wraz z konsumowaniem punktów już
+  minietych, żeby przeliczenie trasy prowadziło do przodu, a nie zawracało,
+- **profile rowerowe** — miejski, trekkingowy, górski i szosowy; pogoda może zaostrzyć
+  wymagania profilu, ale nigdy ich nie rozluźnia.
 
 **`maps`**
 
@@ -94,7 +99,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.8.0 && git push origin v0.8.0
+git tag v0.9.0 && git push origin v0.9.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**

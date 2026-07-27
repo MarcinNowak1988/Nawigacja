@@ -6,6 +6,7 @@ import pl.reactivebike.routing.RouteEngine
 import pl.reactivebike.routing.RouteFailure
 import pl.reactivebike.routing.RouteRequest
 import pl.reactivebike.routing.RouteResult
+import pl.reactivebike.routing.valhalla.BicycleProfile
 import pl.reactivebike.routing.valhalla.ValhallaRouting
 import pl.reactivebike.weather.WeatherConditions
 import java.io.BufferedReader
@@ -27,11 +28,14 @@ class HttpRouteEngine(
     private val endpoint: String = ValhallaRouting.PUBLIC_ENDPOINT,
 ) : RouteEngine {
 
-    /** Warunki pogodowe wpływają na profil rowerowy — patrz `BicycleCosting`. */
+    /** Warunki pogodowe zaostrzają wymagania profilu — patrz `BicycleCosting`. */
     var conditions: WeatherConditions? = null
 
+    /** Rower wybrany przez użytkownika; ustala punkt wyjścia dla wag. */
+    var profile: BicycleProfile = BicycleProfile.TREKKING
+
     override suspend fun route(request: RouteRequest): RouteResult = withContext(Dispatchers.IO) {
-        val body = ValhallaRouting.buildRequest(request, conditions)
+        val body = ValhallaRouting.buildRequest(request, profile, conditions)
 
         val response = try {
             post(body)

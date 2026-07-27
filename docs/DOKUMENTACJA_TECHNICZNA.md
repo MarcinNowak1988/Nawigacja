@@ -131,6 +131,17 @@ Trasy są wyliczane przez **usługę sieciową** ([ADR-0007](adr/0007-aplikacja-
 
 Wzór kosztu i semantyka wag należą do warstwy wspólnej (`shared`, pakiet `routing`) i są niezależne od silnika; warstwa natywna tłumaczy je na format konkretnego silnika ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)).
 
+### 5.0 Plan przejazdu i profil roweru
+
+Trasa powstaje z **planu przejazdu**: punktu startowego, dowolnej liczby punktów pośrednich i celu. Start domyślnie znaczy „moja bieżąca pozycja" i rozwijany jest dopiero w chwili wyznaczania, żeby plan ułożony w domu nie prowadził z domu, gdy rowerzysta już ruszył. Model (`RoutePlan`) jest niezmienny i mieszka w warstwie wspólnej wraz z operacjami dodawania, cofania i czyszczenia.
+
+Dwie zasady są warte zapisania, bo nie wynikają z niczego oczywistego:
+
+- **Punkty pośrednie są konsumowane po kolei.** Minięcie punktu zdejmuje go z planu, dzięki czemu przeliczenie trasy po zjechaniu z niej prowadzi do przodu, a nie zawraca do punktów, które są już za plecami. Minięcie punktu późniejszego **nie** kasuje wcześniejszego — kolejność planu jest wiążąca.
+- **Limit punktów pilnowany jest po naszej stronie** (20 lokalizacji, tyle przyjmuje publiczna instancja Valhalli). Użytkownik dowiaduje się o limicie przy dodawaniu punktu, a nie z błędu serwera po naciśnięciu „wyznacz".
+
+Rodzaj roweru wybiera użytkownik — miejski, trekkingowy, górski albo szosowy. To nie jest kosmetyka: szosówka i rower górski jadące między tymi samymi punktami powinny dostać różne trasy, bo co dla jednego jest skrótem, dla drugiego kończy przejazd. Profil ustala punkt wyjścia dla wag, a **pogoda może je wyłącznie zaostrzyć, nigdy rozluźnić** — ta sama zasada, na której stoi [ADR-0002](adr/0002-model-wag-tylko-podwyzszajacy.md). Deszcz każe mocniej omijać błoto, ale nie wypchnie roweru szosowego na szuter, bo to nie pogoda decyduje, jakie opony ma użytkownik.
+
 ### 5.1 Wzór kosztu krawędzi
 
 ```
@@ -374,6 +385,7 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 - **Zarządzanie zapisanymi regionami.** Nazywanie, lista i usuwanie pojedynczych regionów — dziś jest jeden przycisk „Usuń", kasujący wszystko. Po ADR-0007 to jedyny mechanizm trybu offline, więc jego jakość przestała być drugorzędna.
 - **Trafność oszacowania rozmiaru regionu.** Liczba kafelków jest policzona dokładnie, ale przelicznik na megabajty (`AVERAGE_TILE_BYTES`) przyjęto z rozsądku, a styl z własnym `maxzoom` pobiera mniej plików, niż wynika z siatki. Do skorygowania na podstawie realnych pobrań.
 - **Pełny model wag** wróci dopiero z silnikiem na urządzeniu; dziś router przyjmuje przybliżenie (sekcja 5).
+- **Zmiana kolejności punktów pośrednich.** Dziś kolejność wskazywania jest kolejnością jazdy, a jedyną poprawką jest cofnięcie ostatniego punktu. Przeciąganie punktów na liście wymaga interfejsu, którego jeszcze nie ma.
 - **Proces aktualizacji lokalnych map `.mbtiles`** — częstotliwość, rozmiar pobrań, wersjonowanie danych OSM. [ADR-0003](adr/0003-offline-mbtiles.md) ustala podział „jeden region = jeden plik", ale nie opisuje cyklu aktualizacji.
 - **Próg czułości akcelerometru** dla wykrywania bezruchu ([ADR-0004](adr/0004-warunek-wejscia-w-stan-stationary.md)) — do ustalenia przy implementacji natywnej, wraz z zachowaniem przy roweru stojącym na wietrze.
 - **Dostrojenie wag Storm Mode** — obecne wartości w `StormMode.weights` są punktem wyjścia przyjętym z rozsądku, nie wynikiem pomiarów. Wymagają weryfikacji na realnych przejazdach w deszczu.
