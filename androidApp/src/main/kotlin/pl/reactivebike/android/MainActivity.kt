@@ -22,6 +22,7 @@ import android.widget.Toast
 import pl.reactivebike.gps.GpsState
 import pl.reactivebike.gps.GpsStateMachine
 import pl.reactivebike.geocoding.GeocodeResult
+import pl.reactivebike.geocoding.Geocoder
 import pl.reactivebike.geocoding.Place
 import pl.reactivebike.gps.RideSignals
 import pl.reactivebike.maps.OfflineRegionEstimate
@@ -123,7 +124,16 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var weatherRequestInFlight = false
 
     private val routeEngine = HttpRouteEngine()
-    private val geocoder = HttpGeocoder()
+    /**
+     * Wyszukiwarka miejsc: Mapy.com, gdy jest klucz, w przeciwnym razie Nominatim.
+     *
+     * Zapasowe wyjście nie jest tu ozdobą — bez niego build bez sekretu dawałby aplikację
+     * z martwym wyszukiwaniem, a takiej nie dałoby się ani przetestować, ani wydać.
+     */
+    private val geocoder: Geocoder = BuildConfig.MAPY_API_KEY
+        .takeIf { it.isNotBlank() }
+        ?.let { HttpMapyGeocoder(it) }
+        ?: HttpGeocoder()
     private var searchInFlight = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -651,9 +661,17 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
             when (result) {
                 is GeocodeResult.Success -> showSearchResults(result.places, slot)
                 GeocodeResult.NoMatches ->
-                    Toast.makeText(this@MainActivity, "Nic nie znalazłem dla: $query", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Nic nie znalazłem dla: $query (${geocoder.providerName})",
+                        Toast.LENGTH_LONG,
+                    ).show()
                 GeocodeResult.Failure ->
-                    Toast.makeText(this@MainActivity, "Wyszukiwanie nie powiodło się.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Wyszukiwanie nie powiodło się (${geocoder.providerName}).",
+                        Toast.LENGTH_LONG,
+                    ).show()
             }
         }
     }
@@ -678,7 +696,7 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
         }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle(slot.fieldLabel)
+            .setTitle("${slot.fieldLabel} — ${geocoder.providerName}")
             .setItems(labels) { _, which -> applyFoundPlace(places[which], slot) }
             .setNegativeButton("Anuluj", null)
             .show()

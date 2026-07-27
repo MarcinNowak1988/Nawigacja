@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import pl.reactivebike.geocoding.GeocodeResult
+import pl.reactivebike.geocoding.Geocoder
 import pl.reactivebike.geocoding.Nominatim
 import pl.reactivebike.routing.GeoPoint
 import java.io.BufferedReader
@@ -18,11 +19,13 @@ import java.net.URL
  * są warunkiem dostępu, a nie dobrą praktyką: identyfikujący `User-Agent` i co najwyżej
  * jedno zapytanie na sekundę.
  */
-class HttpGeocoder {
+class HttpGeocoder : Geocoder {
+
+    override val providerName = "OpenStreetMap"
 
     private var lastRequestAtMillis = 0L
 
-    suspend fun search(query: String, near: GeoPoint?): GeocodeResult = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String, near: GeoPoint?): GeocodeResult = withContext(Dispatchers.IO) {
         val url = try {
             Nominatim.buildUrl(query, near)
         } catch (_: IllegalArgumentException) {

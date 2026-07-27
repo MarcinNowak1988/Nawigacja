@@ -35,3 +35,4 @@ powstaje nowy ADR, a stary dostaje status `Zastąpiony przez ADR-NNNN`.
 | [0005](0005-barometr-nasluchiwany-rownolegle.md) | Barometr nasłuchiwany równolegle z buforem pogodowym | Zaakceptowany |
 | [0006](0006-mapy-offline-przez-offlinemanager.md) | Mapy offline przez OfflineManager zamiast ręcznego `.mbtiles` | Zaakceptowany |
 | [0007](0007-aplikacja-online-z-zapisanymi-regionami.md) | Aplikacja online z zapisanymi regionami mapy | Zaakceptowany |
+| [0008](0008-wyszukiwanie-miejsc-w-mapy-com.md) | Wyszukiwanie miejsc w Mapy.com, mapa zostaje na OpenStreetMap | Zaakceptowany |

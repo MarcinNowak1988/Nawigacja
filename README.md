@@ -58,8 +58,10 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 
 **`geocoding`**
 
-- **wyszukiwanie miejsc po nazwie** — budowanie zapytania do Nominatim wraz z kodowaniem
-  adresu i parsowaniem odpowiedzi.
+- **port `Geocoder`** — granica dostawcy wyszukiwania, ta sama co `RouteEngine` dla trasowania,
+- **klienci Mapy.com i Nominatim** — budowanie zapytania wraz z kodowaniem adresu
+  i parsowaniem odpowiedzi. Mapy.com wymagają klucza API; bez niego aplikacja wraca
+  do Nominatima ([ADR-0008](docs/adr/0008-wyszukiwanie-miejsc-w-mapy-com.md)).
 
 **`maps`**
 
@@ -111,7 +113,7 @@ APK powstaje w [workflow `APK`](.github/workflows/release-apk.yml):
 - **na tagu `v*`** — dodatkowo powstaje wydanie GitHub z APK w załącznikach.
 
 ```bash
-git tag v0.13.0 && git push origin v0.13.0
+git tag v0.14.0 && git push origin v0.14.0
 ```
 
 Wydanie zawiera po jednym APK na architekturę oraz wariant uniwersalny. **`arm64-v8a`**
