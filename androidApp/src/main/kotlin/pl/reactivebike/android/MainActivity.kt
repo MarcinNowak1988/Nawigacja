@@ -1419,6 +1419,10 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private companion object {
         const val REQUEST_LOCATION = 1
 
+        /** Ustawienia przeżywające zamknięcie aplikacji. */
+        const val PREFERENCES = "reactivebike"
+        const val KEY_VOICE_ENABLED = "voiceEnabled"
+
         const val TICK_MILLIS = 1_000L
         const val HTTP_TIMEOUT_MILLIS = 10_000
 
