@@ -71,7 +71,7 @@ w tabeli, żeby nie zgubić informacji o tym, czym produkt miał być:
 | UI — Android | Jetpack Compose | Natywny interfejs użytkownika |
 | UI — iOS | SwiftUI | Natywny interfejs użytkownika |
 | Silnik mapy | MapLibre GL Native | Renderowanie map wektorowych; regiony offline przez `OfflineManager` ([ADR-0006](adr/0006-mapy-offline-przez-offlinemanager.md)), a nie pliki `.mbtiles` z [ADR-0003](adr/0003-offline-mbtiles.md) |
-| Wyszukiwanie miejsc | Mapy.com, zapasowo Nominatim (OSM) | Zamiana nazwy albo adresu na współrzędne; **wymaga połączenia**. Mapy.com wymagają klucza API — bez niego aplikacja wraca do Nominatima ([ADR-0008](adr/0008-wyszukiwanie-miejsc-w-mapy-com.md)) |
+| Wyszukiwanie miejsc | Nominatim (OSM), za portem `Geocoder` | Zamiana nazwy albo adresu na współrzędne; **wymaga połączenia**. Dostawca jest wymienialny — próba przejścia na Mapy.com i powód wycofania: [ADR-0008](adr/0008-wyszukiwanie-miejsc-w-mapy-com.md) |
 | Silnik trasowania | Usługa sieciowa (Valhalla) | Wyznaczanie tras **wymaga połączenia** ([ADR-0007](adr/0007-aplikacja-online-z-zapisanymi-regionami.md)). Ukryty za portem `RouteEngine`, więc pozostaje wymienialny ([ADR-0001](adr/0001-silnik-trasowania-per-platforma.md)) |
 | Warstwa sieciowa | Ktor | Komunikacja z Open-Meteo i modelem AI |
 | Baza danych | SQLDelight | Lokalny bufor map, tras i prognoz pogody |
@@ -146,7 +146,7 @@ Dwie zasady są warte zapisania, bo nie wynikają z niczego oczywistego:
 - **Punkty pośrednie są konsumowane po kolei.** Minięcie punktu zdejmuje go z planu, dzięki czemu przeliczenie trasy po zjechaniu z niej prowadzi do przodu, a nie zawraca do punktów, które są już za plecami. Minięcie punktu późniejszego **nie** kasuje wcześniejszego — kolejność planu jest wiążąca.
 - **Limit punktów pilnowany jest po naszej stronie** (20 lokalizacji, tyle przyjmuje publiczna instancja Valhalli). Użytkownik dowiaduje się o limicie przy dodawaniu punktu, a nie z błędu serwera po naciśnięciu „wyznacz".
 
-Punkty planu wskazuje się na mapie albo **wpisując nazwę miejsca**, w trzech podpisanych polach: **Start**, **Koniec** i opcjonalne **Przez**. Dostawcą wyszukiwania jest Mapy.com, a bez klucza API — Nominatim ([ADR-0008](adr/0008-wyszukiwanie-miejsc-w-mapy-com.md)). Zasady Nominatima kształtują interfejs także wtedy, gdy jest tylko zapasowy; jej zasady korzystania są wiążące, nie uprzejme, i kształtują interfejs: wymagany jest identyfikujący `User-Agent`, najwyżej jedno zapytanie na sekundę oraz **brak podpowiedzi w trakcie pisania**. Dlatego szukanie uruchamia przycisk, a nie każde naciśnięcie klawisza. Bieżąca pozycja podbija trafność wyników miękkim oknem (`bounded=0`) — „Rynek" ma znaczyć rynek w okolicy, ale rynek z drugiego końca kraju dalej da się znaleźć.
+Punkty planu wskazuje się na mapie albo **wpisując nazwę miejsca**, w trzech podpisanych polach: **Start**, **Koniec** i opcjonalne **Przez**. Dostawca stoi za portem `Geocoder` i jest wymienialny; dziś jest nim Nominatim ([ADR-0008](adr/0008-wyszukiwanie-miejsc-w-mapy-com.md)). Zasady Nominatima kształtują interfejs także wtedy, gdy jest tylko zapasowy; jej zasady korzystania są wiążące, nie uprzejme, i kształtują interfejs: wymagany jest identyfikujący `User-Agent`, najwyżej jedno zapytanie na sekundę oraz **brak podpowiedzi w trakcie pisania**. Dlatego szukanie uruchamia przycisk, a nie każde naciśnięcie klawisza. Bieżąca pozycja podbija trafność wyników miękkim oknem (`bounded=0`) — „Rynek" ma znaczyć rynek w okolicy, ale rynek z drugiego końca kraju dalej da się znaleźć.
 
 ### 5.0.1 Rozpoczęcie i zakończenie nawigacji
 
@@ -382,7 +382,7 @@ Prywatność jest jednym z czterech głównych wyróżników systemu (sekcja 2).
 ### 9.2 Do doprecyzowania
 
 - Dokładny zakres danych (same współrzędne vs. historia trasy) wysyłanych do Open-Meteo i modelu AI oraz to, czy zapytania są anonimizowane / pozbawione identyfikatorów użytkownika.
-- **Wyszukiwanie miejsc.** Wpisany tekst trafia do Mapy.com (albo, bez klucza API, do publicznej instancji Nominatim) wraz z bieżącą pozycją jako preferencją. Zapytanie „dom babci Kraków" mówi o użytkowniku więcej niż same współrzędne. Do rozstrzygnięcia razem z decyzją o instancji trasowania: publiczna czy własna.
+- **Wyszukiwanie miejsc.** Wpisany tekst trafia do publicznej instancji Nominatim wraz z oknem wokół bieżącej pozycji. Zapytanie „dom babci Kraków" mówi o użytkowniku więcej niż same współrzędne. Do rozstrzygnięcia razem z decyzją o instancji trasowania: publiczna czy własna.
 - Polityka retencji lokalnego bufora (SQLDelight) — czy i kiedy stare trasy/prognozy są czyszczone z urządzenia.
 - Wymuszenie szyfrowanej transmisji (TLS) w warstwie Ktor dla wszystkich połączeń zewnętrznych.
 

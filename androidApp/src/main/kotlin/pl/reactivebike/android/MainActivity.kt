@@ -124,16 +124,8 @@ class MainActivity : Activity(), LocationListener, SensorEventListener {
     private var weatherRequestInFlight = false
 
     private val routeEngine = HttpRouteEngine()
-    /**
-     * Wyszukiwarka miejsc: Mapy.com, gdy jest klucz, w przeciwnym razie Nominatim.
-     *
-     * Zapasowe wyjście nie jest tu ozdobą — bez niego build bez sekretu dawałby aplikację
-     * z martwym wyszukiwaniem, a takiej nie dałoby się ani przetestować, ani wydać.
-     */
-    private val geocoder: Geocoder = BuildConfig.MAPY_API_KEY
-        .takeIf { it.isNotBlank() }
-        ?.let { HttpMapyGeocoder(it) }
-        ?: HttpGeocoder()
+    /** Wyszukiwarka miejsc za portem [Geocoder] — dziś Nominatim. */
+    private val geocoder: Geocoder = HttpGeocoder()
     private var searchInFlight = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 

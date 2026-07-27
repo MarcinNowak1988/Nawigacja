@@ -21,22 +21,6 @@ android {
         targetSdk = property("androidTargetSdk").toString().toInt()
         versionCode = 14
         versionName = "0.14.0"
-
-        // Klucz API do wyszukiwarki Mapy.com wstrzykiwany przy budowaniu z sekretu CI.
-        //
-        // Nie leży w repozytorium, bo jest publiczne. Trafia natomiast do APK i da się go
-        // stamtad wyjac — to nieusuwalna wlasciwosc kluczy w aplikacjach mobilnych, nie
-        // przeoczenie. Bez klucza aplikacja wraca do Nominatima, wiec dziala od razu
-        // po zbudowaniu, tylko z gorszymi wynikami dla polskich adresow.
-        buildConfigField(
-            "String",
-            "MAPY_API_KEY",
-            "\"${System.getenv("MAPY_API_KEY").orEmpty()}\"",
-        )
-    }
-
-    buildFeatures {
-        buildConfig = true
     }
 
     // Podpisywanie wydania kluczem z sekretów CI, gdy są dostępne.

@@ -59,9 +59,8 @@ Moduł `shared` zawiera dziś logikę biznesową w całości niezależną od pla
 **`geocoding`**
 
 - **port `Geocoder`** — granica dostawcy wyszukiwania, ta sama co `RouteEngine` dla trasowania,
-- **klienci Mapy.com i Nominatim** — budowanie zapytania wraz z kodowaniem adresu
-  i parsowaniem odpowiedzi. Mapy.com wymagają klucza API; bez niego aplikacja wraca
-  do Nominatima ([ADR-0008](docs/adr/0008-wyszukiwanie-miejsc-w-mapy-com.md)).
+- **klient Nominatim** — budowanie zapytania wraz z kodowaniem adresu i parsowaniem
+  odpowiedzi.
 
 **`maps`**
 

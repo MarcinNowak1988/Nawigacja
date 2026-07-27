@@ -69,7 +69,6 @@ jobs:
 
       - name: Budowa APK
         env:
-          MAPY_API_KEY: ${{ secrets.MAPY_API_KEY }}
           RELEASE_KEYSTORE_PATH: ${{ steps.signing.outputs.path }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}

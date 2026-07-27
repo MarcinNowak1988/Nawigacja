@@ -1,9 +1,17 @@
 # ADR-0008: Wyszukiwanie miejsc w Mapy.com, mapa zostaje na OpenStreetMap
 
-- **Status:** Zaakceptowany
+- **Status:** **Wycofany 27 lipca 2026, przed wejściem w życie**
 - **Data:** 27 lipca 2026
 - **Dotyczy:** sekcji 3, 5.0 i 9 [dokumentacji technicznej](../DOKUMENTACJA_TECHNICZNA.md)
 - **Wzmacnia:** [ADR-0006](0006-mapy-offline-przez-offlinemanager.md), [ADR-0007](0007-aplikacja-online-z-zapisanymi-regionami.md)
+
+> **Dlaczego wycofany.** Właściciel produktu zdecydował o rezygnacji z Mapy.com, zanim
+> decyzja trafiła do jakiegokolwiek wydania — klucz API nigdy nie został skonfigurowany,
+> więc aplikacja przez cały czas korzystała z Nominatima. Treść ADR zostaje nietknięta,
+> bo najważniejsze ustalenie zachowuje ważność niezależnie od dostawcy: **regulamin
+> Mapy.com zabrania buforowania kafelków, co wyklucza je jako źródło mapy podkładowej
+> dopóki istnieją zapisane regiony offline.** Port `Geocoder`, który przy okazji powstał,
+> pozostaje w kodzie.
 
 ## Kontekst
 

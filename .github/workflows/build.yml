@@ -32,7 +32,6 @@ jobs:
       # na zwykłym runnerze Linux — bez Android SDK i bez Xcode.
       - name: Kompilacja i testy
         env:
-          MAPY_API_KEY: ${{ secrets.MAPY_API_KEY }}
         run: ./gradlew build --no-daemon
 
       - name: Publikacja raportów z testów
