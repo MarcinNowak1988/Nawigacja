@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pająk i Muchy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=Karla:wght@400;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Gra ma jeden, świadomie wybrany świat wizualny: nocny ogród.
+   Dlatego nie ma wariantu jasnego — wszystkie kolory malujemy wprost,
+   żeby strona trzymała się niezależnie od tła hosta. */
+:root{
+  --noc:#080D0B;
+  --mech:#101A15;
+  --mech-jasny:#17251E;
+  --jedwab:#9CB3A6;
+  --jedwab-cichy:#4C6157;
+  --rosa:#7FE3D0;
+  --bursztyn:#E5A13A;
+  --osa:#F4C542;
+  --alarm:#E4674A;
+  --tekst:#E8F0EA;
+  --tekst-cichy:#8FA79A;
+  --promien:16px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #14231C 0%, rgba(20,35,28,0) 60%),
+    radial-gradient(100% 70% at 50% 110%, #0E1A15 0%, rgba(14,26,21,0) 55%),
+    var(--noc);
+  color:var(--tekst);
+  font-family:"Karla","Helvetica Neue",Arial,sans-serif;
+  font-size:16px;
+  line-height:1.5;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:clamp(12px,2.5vw,28px) 16px 28px;
+  gap:clamp(10px,1.6vw,18px);
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ——— nagłówek ——— */
+.szczyt{
+  width:min(760px,100%);
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+h1{
+  font-family:"Fraunces","Georgia",serif;
+  font-weight:900;
+  font-size:clamp(26px,5.2vw,42px);
+  line-height:1;
+  margin:0;
+  letter-spacing:-.02em;
+  text-wrap:balance;
+  background:linear-gradient(100deg,var(--tekst) 20%,var(--rosa) 130%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+.podtytul{
+  margin:0;
+  color:var(--tekst-cichy);
+  font-size:13px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+
+/* ——— pasek stanu ——— */
+.stan{
+  width:min(760px,100%);
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:1px;
+  background:var(--jedwab-cichy);
+  border:1px solid var(--jedwab-cichy);
+  border-radius:var(--promien);
+  overflow:hidden;
+}
+.pole{
+  background:var(--mech);
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.pole b{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-weight:600;
+  font-size:clamp(17px,3.4vw,22px);
+  font-variant-numeric:tabular-nums;
+  color:var(--tekst);
+  letter-spacing:.01em;
+}
+.pole span{
+  font-size:11px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--tekst-cichy);
+}
+.zycia{display:flex;gap:6px;align-items:center;height:28px}
+.zycia i{width:16px;height:16px;display:block;opacity:.95}
+
+/* ——— scena ——— */
+.scena{
+  position:relative;
+  width:min(760px,100%);
+  aspect-ratio:1/1;
+  max-height:min(76vh,760px);
+  margin-inline:auto;
+  border:1px solid var(--jedwab-cichy);
+  border-radius:calc(var(--promien) + 6px);
+  background:
+    radial-gradient(70% 70% at 50% 45%, #12201A 0%, #0A110E 70%, #070C0A 100%);
+  overflow:hidden;
+  box-shadow:0 30px 70px -40px #000, inset 0 0 90px -30px #000;
+}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+
+.zaslona{
+  position:absolute;
+  inset:0;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  padding:24px;
+  text-align:center;
+  background:rgba(6,11,9,.82);
+  backdrop-filter:blur(3px);
+}
+.zaslona.widoczna{display:flex}
+.zaslona h2{
+  font-family:"Fraunces",Georgia,serif;
+  font-weight:900;
+  font-size:clamp(24px,6vw,40px);
+  margin:0;
+  letter-spacing:-.01em;
+  text-wrap:balance;
+}
+.zaslona p{
+  margin:0;
+  max-width:34ch;
+  color:var(--tekst-cichy);
+  font-size:15px;
+}
+.zaslona p strong{color:var(--rosa);font-weight:700}
+
+button{
+  font-family:"Karla",sans-serif;
+  font-weight:700;
+  font-size:15px;
+  letter-spacing:.04em;
+  color:var(--noc);
+  background:var(--rosa);
+  border:0;
+  border-radius:999px;
+  padding:12px 30px;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow:0 0 0 0 rgba(127,227,208,.5);
+}
+button:hover{transform:translateY(-1px);box-shadow:0 8px 24px -10px var(--rosa)}
+button:active{transform:translateY(0)}
+button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
+
+/* ——— stopka: sterowanie ——— */
+.spod{
+  width:min(760px,100%);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  color:var(--tekst-cichy);
+  font-size:13.5px;
+}
+.spod kbd{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:12px;
+  color:var(--tekst);
+  background:var(--mech-jasny);
+  border:1px solid var(--jedwab-cichy);
+  border-bottom-width:2px;
+  border-radius:6px;
+  padding:2px 7px;
+}
+.male{
+  background:transparent;
+  color:var(--tekst-cichy);
+  border:1px solid var(--jedwab-cichy);
+  padding:7px 16px;
+  font-size:13px;
+  box-shadow:none;
+}
+.male:hover{color:var(--tekst);background:var(--mech-jasny);box-shadow:none}
+
+/* ——— krzyżak dotykowy ——— */
+.krzyzak{
+  display:none;
+  grid-template-columns:repeat(3,64px);
+  grid-template-rows:repeat(2,58px);
+  gap:8px;
+  justify-content:center;
+  margin-top:2px;
+}
+.krzyzak button{
+  background:var(--mech);
+  color:var(--jedwab);
+  border:1px solid var(--jedwab-cichy);
+  border-radius:12px;
+  padding:0;
+  font-size:20px;
+  box-shadow:none;
+}
+.krzyzak button:active{background:var(--mech-jasny);color:var(--rosa)}
+.krzyzak .gora{grid-column:2}
+.krzyzak .lewo{grid-column:1;grid-row:2}
+.krzyzak .dol{grid-column:2;grid-row:2}
+.krzyzak .prawo{grid-column:3;grid-row:2}
+@media (hover:none) and (pointer:coarse), (max-width:620px){
+  .krzyzak{display:grid}
+  .klawisze{display:none}
+}
+@media (max-width:380px){
+  .krzyzak{grid-template-columns:repeat(3,56px)}
+}
+@media (prefers-reduced-motion:reduce){
+  button{transition:none}
+}
+</style>
+</head>
+<body>
+<header class="szczyt">
+  <h1>Pająk i Muchy</h1>
+  <p class="podtytul">Nocna sieć · 16 szprych</p>
+</header>
+
+<section class="stan" aria-label="Stan gry">
+  <div class="pole"><span>Wynik</span><b id="wynik">0</b></div>
+  <div class="pole"><span>Rekord</span><b id="rekord">0</b></div>
+  <div class="pole"><span>Sieć</span><b id="poziom">1</b></div>
+  <div class="pole"><span>Życia</span><div class="zycia" id="zycia"></div></div>
+</section>
+
+<div class="scena">
+  <canvas id="plotno"></canvas>
+  <div class="zaslona widoczna" id="zaslona">
+    <h2 id="zaslona-tytul">Zapolujmy</h2>
+    <p id="zaslona-tresc">Chodzisz po pajęczynie i zjadasz muchy. Cztery <strong>osy</strong> chodzą po tej samej sieci — dotknięcie kosztuje życie. Zjedz <strong>kroplę rosy</strong>, a przez chwilę to ty polujesz na nie.</p>
+    <button id="zaslona-przycisk" type="button">Start</button>
+  </div>
+</div>
+
+<div class="krzyzak" aria-label="Sterowanie dotykowe">
+  <button class="gora" type="button" data-kier="gora" aria-label="W górę">▲</button>
+  <button class="lewo" type="button" data-kier="lewo" aria-label="W lewo">◀</button>
+  <button class="dol" type="button" data-kier="dol" aria-label="W dół">▼</button>
+  <button class="prawo" type="button" data-kier="prawo" aria-label="W prawo">▶</button>
+</div>
+
+<footer class="spod">
+  <p class="klawisze" style="margin:0">
+    <kbd>↑</kbd> <kbd>←</kbd> <kbd>↓</kbd> <kbd>→</kbd> lub <kbd>WASD</kbd> — pająk skręca w stronę, którą wskażesz.
+    <kbd>Spacja</kbd> — pauza.
+  </p>
+  <button class="male" id="dzwiek" type="button" aria-pressed="false">Dźwięk: wył.</button>
+</footer>
+
+<script>
+(() => {
+"use strict";
+
+// ══════════════════════════════════════════════════════════════════
+//  Sieć: graf biegunowy — HUB w środku, R pierścieni po S szprych.
+//  Węzeł (r,s) ma numer 1 + r*S + s; HUB to 0.
+// ══════════════════════════════════════════════════════════════════
+const S = 16;            // szprychy
+const R = 7;             // pierścienie
+const HUB = 0;
+const LICZBA = 1 + R * S;
+const WYJSCIA = [0, 4, 8, 12];   // szprychy wychodzące z gniazda os
+const KROK = (Math.PI * 2) / S;
+
+const wezel = (r, s) => 1 + r * S + ((s % S) + S) % S;
+const pierscien = (id) => Math.floor((id - 1) / S);
+const szprycha = (id) => (id - 1) % S;
+const klucz = (a, b) => (a < b ? a + "_" + b : b + "_" + a);
+// Odbicie względem osi pionowej — dzięki niemu sieć jest symetryczna.
+const lustro = (id) => (id === HUB ? HUB : wezel(pierscien(id), 8 - szprycha(id)));
+
+function losowacz(ziarno) {
+  let a = ziarno >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// --- SIEC ---
+function utkajSiec(ziarno) {
+  const rnd = losowacz(ziarno);
+
+  const wszystkie = [];
+  for (let r = 0; r < R; r++)
+    for (let s = 0; s < S; s++) wszystkie.push([wezel(r, s), wezel(r, s + 1)]);
+  for (let r = 0; r < R - 1; r++)
+    for (let s = 0; s < S; s++) wszystkie.push([wezel(r, s), wezel(r + 1, s)]);
+
+  // Nici, które są zawsze: promienie z gniazda i cała zewnętrzna obręcz.
+  const stale = [];
+  for (const s of WYJSCIA) stale.push([HUB, wezel(0, s)]);
+  for (let s = 0; s < S; s++) stale.push([wezel(R - 1, s), wezel(R - 1, s + 1)]);
+
+  const rodzic = new Int16Array(LICZBA).map((_, i) => i);
+  const znajdz = (x) => {
+    while (rodzic[x] !== x) { rodzic[x] = rodzic[rodzic[x]]; x = rodzic[x]; }
+    return x;
+  };
+  const zlacz = (a, b) => {
+    const ra = znajdz(a), rb = znajdz(b);
+    if (ra === rb) return false;
+    rodzic[rb] = ra;
+    return true;
+  };
+
+  const wybrane = new Map();
+  const dodaj = (kr) => { wybrane.set(klucz(kr[0], kr[1]), kr); zlacz(kr[0], kr[1]); };
+  stale.forEach(dodaj);
+
+  // Krawędzie łączymy w pary z ich odbiciem, żeby sieć została symetryczna.
+  const grupy = [];
+  const zajete = new Set(wybrane.keys());
+  for (const kr of wszystkie) {
+    const k = klucz(kr[0], kr[1]);
+    if (zajete.has(k)) continue;
+    const odbita = [lustro(kr[0]), lustro(kr[1])];
+    const ko = klucz(odbita[0], odbita[1]);
+    zajete.add(k); zajete.add(ko);
+    grupy.push(k === ko ? [kr] : [kr, odbita]);
+  }
+  for (let i = grupy.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [grupy[i], grupy[j]] = [grupy[j], grupy[i]];
+  }
+
+  // Najpierw drzewo rozpinające (wszystko połączone), potem plecionka:
+  // część odrzuconych nici wraca, żeby powstały pętle — korytarze bez ślepych końców.
+  const odrzucone = [];
+  for (const g of grupy) {
+    if (g.some(([a, b]) => znajdz(a) !== znajdz(b))) g.forEach(dodaj);
+    else odrzucone.push(g);
+  }
+  const wracaja = Math.floor(odrzucone.length * 0.3);
+  for (let i = 0; i < wracaja; i++) odrzucone.pop().forEach(dodaj);
+
+  const stopien = new Int16Array(LICZBA);
+  for (const [a, b] of wybrane.values()) { stopien[a]++; stopien[b]++; }
+  // Ślepe zaułki są w tej mechanice nieuczciwe — dosnuwamy im drugie wyjście.
+  for (let i = odrzucone.length - 1; i >= 0 && odrzucone.length; i--) {
+    const g = odrzucone[i];
+    if (g.some(([a, b]) => stopien[a] < 2 || stopien[b] < 2)) {
+      g.forEach((kr) => { dodaj(kr); stopien[kr[0]]++; stopien[kr[1]]++; });
+      odrzucone.splice(i, 1);
+    }
+  }
+
+  const sasiedzi = Array.from({ length: LICZBA }, () => []);
+  for (const [a, b] of wybrane.values()) { sasiedzi[a].push(b); sasiedzi[b].push(a); }
+  return { sasiedzi, krawedzie: [...wybrane.values()] };
+}
+// --- /SIEC ---
+
+// Najkrótsze odległości w sieci — osy wybierają nić, która skraca drogę do celu.
+const buforBFS = new Int16Array(LICZBA);
+const kolejkaBFS = new Int16Array(LICZBA);
+function odleglosci(sasiedzi, cel) {
+  buforBFS.fill(-1);
+  let g = 0, k = 0;
+  buforBFS[cel] = 0;
+  kolejkaBFS[k++] = cel;
+  while (g < k) {
+    const w = kolejkaBFS[g++];
+    for (const n of sasiedzi[w]) if (buforBFS[n] < 0) { buforBFS[n] = buforBFS[w] + 1; kolejkaBFS[k++] = n; }
+  }
+  return buforBFS;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Geometria: gdzie na ekranie leży węzeł i punkt na nici.
+// ══════════════════════════════════════════════════════════════════
+const plotno = document.getElementById("plotno");
+const ctx = plotno.getContext("2d");
+let bok = 700, sx = 350, sy = 350, promienMax = 320;
+
+function zmierz() {
+  const p = plotno.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  bok = Math.max(240, Math.min(p.width, p.height));
+  plotno.width = Math.round(p.width * dpr);
+  plotno.height = Math.round(p.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sx = p.width / 2;
+  sy = p.height / 2;
+  promienMax = Math.min(p.width, p.height) * 0.455;
+}
+new ResizeObserver(zmierz).observe(plotno);
+
+const promienPierscienia = (r) => promienMax * (0.19 + 0.81 * (r / (R - 1)));
+
+function pozycja(id) {
+  if (id === HUB) return { x: sx, y: sy };
+  const a = szprycha(id) * KROK;
+  const rad = promienPierscienia(pierscien(id));
+  return { x: sx + rad * Math.cos(a), y: sy + rad * Math.sin(a) };
+}
+
+function naNici(a, b, t) {
+  if (a === HUB || b === HUB) {
+    const p = pozycja(a), q = pozycja(b);
+    return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+  }
+  const ra = pierscien(a), rb = pierscien(b);
+  if (ra === rb) {
+    const sa = szprycha(a), sb = szprycha(b);
+    const zwrot = (sb - sa + S) % S === 1 ? 1 : -1;
+    const kat = sa * KROK + zwrot * KROK * t;
+    const rad = promienPierscienia(ra);
+    return { x: sx + rad * Math.cos(kat), y: sy + rad * Math.sin(kat) };
+  }
+  const kat = szprycha(a) * KROK;
+  const rad = promienPierscienia(ra) + (promienPierscienia(rb) - promienPierscienia(ra)) * t;
+  return { x: sx + rad * Math.cos(kat), y: sy + rad * Math.sin(kat) };
+}
+
+function dlugoscNici(a, b) {
+  if (a === HUB || b === HUB) {
+    const inny = a === HUB ? b : a;
+    return promienPierscienia(pierscien(inny));
+  }
+  const ra = pierscien(a), rb = pierscien(b);
+  if (ra === rb) return promienPierscienia(ra) * KROK;
+  return Math.abs(promienPierscienia(rb) - promienPierscienia(ra));
+}
+
+// Kierunek, w którym nić odchodzi od węzła — potrzebny, żeby strzałka
+// „w górę" znaczyła w górę ekranu, a nie „na zewnątrz sieci".
+function zwrotNici(a, b) {
+  const p = naNici(a, b, 0), q = naNici(a, b, 0.06);
+  const dx = q.x - p.x, dy = q.y - p.y;
+  const d = Math.hypot(dx, dy) || 1;
+  return { x: dx / d, y: dy / d };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Stan gry
+// ══════════════════════════════════════════════════════════════════
+const START = wezel(R - 1, 4);   // dół zewnętrznej obręczy
+const KATY = { gora: [0, -1], dol: [0, 1], lewo: [-1, 0], prawo: [1, 0] };
+const IMIONA = ["Cień", "Zasadzka", "Lustro", "Włóczęga"];
+const ROGI = [wezel(R - 1, 0), wezel(R - 1, 4), wezel(R - 1, 8), wezel(R - 1, 12)];
+const FAZY = [7, 20, 7, 20, 5, 20, 5, Infinity];
+
+let siec, muchy, rosa, doZjedzenia;
+let pajak, osy, tryb, wynik, rekord = 0, poziom, zycia, zegar, fazaNr, fazaCzas;
+let strach = 0, mnoznik = 1, przerwa = 0, blysk = 0, dzwiekWl = false, audio = null;
+let rozproszenie = true;   // osy rozchodzą się po rogach zamiast gonić
+
+const el = {
+  wynik: document.getElementById("wynik"),
+  rekord: document.getElementById("rekord"),
+  poziom: document.getElementById("poziom"),
+  zycia: document.getElementById("zycia"),
+  zaslona: document.getElementById("zaslona"),
+  tytul: document.getElementById("zaslona-tytul"),
+  tresc: document.getElementById("zaslona-tresc"),
+  przycisk: document.getElementById("zaslona-przycisk"),
+  dzwiek: document.getElementById("dzwiek"),
+};
+
+try { rekord = parseInt(localStorage.getItem("pajak-rekord") || "0", 10) || 0; } catch (e) { rekord = 0; }
+
+function nowaGra() {
+  wynik = 0; poziom = 1; zycia = 3;
+  nowaSiec();
+}
+
+function nowaSiec() {
+  siec = utkajSiec(poziom * 7919 + 13);
+  muchy = new Set();
+  rosa = new Set();
+  for (let i = 1; i < LICZBA; i++) muchy.add(i);
+  for (const [a, b] of siec.krawedzie) if (a !== HUB && b !== HUB) muchy.add(klucz(a, b));
+  for (const s of [2, 6, 10, 14]) {
+    const id = wezel(R - 2, s);
+    muchy.delete(id);
+    rosa.add(id);
+  }
+  doZjedzenia = muchy.size + rosa.size;
+  ustawPostacie();
+  fazaNr = 0; fazaCzas = 0; strach = 0; mnoznik = 1;
+}
+
+function ustawPostacie() {
+  const pierwszy = siec.sasiedzi[START].find((n) => pierscien(n) === R - 1) ?? siec.sasiedzi[START][0];
+  pajak = {
+    od: START, do: pierwszy, t: 0, len: dlugoscNici(START, pierwszy),
+    chce: null, kurs: zwrotNici(START, pierwszy), krok: 0, stoi: false,
+  };
+  osy = IMIONA.map((imie, i) => ({
+    imie, nr: i, od: HUB, do: HUB, t: 0, len: 1,
+    stan: "gniazdo", czekaj: [0, 2.4, 5.2, 8.4][i], skrzydla: Math.random() * 6,
+  }));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Ruch
+// ══════════════════════════════════════════════════════════════════
+function wybierzZKierunku(w, przyszly, wektor) {
+  let naj = null, najlepszy = 0.3;
+  for (const n of siec.sasiedzi[w]) {
+    if (n === przyszly) continue;
+    const z = zwrotNici(w, n);
+    const skala = z.x * wektor[0] + z.y * wektor[1];
+    if (skala > najlepszy) { najlepszy = skala; naj = n; }
+  }
+  return naj;
+}
+
+function pajakWWezle() {
+  const w = pajak.do;
+  if (pajak.chce) {
+    const cel = wybierzZKierunku(w, null, KATY[pajak.chce]);
+    if (cel !== null) { ruszPajaka(w, cel); pajak.chce = null; return; }
+  }
+  // Bez skrętu pająk idzie dalej „prosto" — nicią najbliższą dotychczasowemu kursowi.
+  const dalej = wybierzZKierunku(w, pajak.od, [pajak.kurs.x, pajak.kurs.y]);
+  if (dalej !== null) { ruszPajaka(w, dalej); return; }
+  // Nić skręca ostro — jeśli wyjście jest tylko jedno, pająk idzie za nią,
+  // bo to wciąż ten sam korytarz. Na rozstaju bez wskazania staje.
+  const wyjscia = siec.sasiedzi[w].filter((n) => n !== pajak.od);
+  if (wyjscia.length === 1) ruszPajaka(w, wyjscia[0]);
+  else pajak.stoi = true;
+}
+
+function ruszPajaka(od, doW) {
+  pajak.od = od; pajak.do = doW; pajak.t = 0;
+  pajak.len = dlugoscNici(od, doW);
+  pajak.kurs = zwrotNici(od, doW);
+}
+
+function celOsy(o) {
+  if (o.stan === "zjedzona") return HUB;
+  if (rozproszenie) return ROGI[o.nr];
+  const p = pajak.do;
+  if (o.nr === 0) return p;
+  if (o.nr === 1) {          // zachodzi drogę: cztery węzły przed pająkiem
+    let w = p, poprz = pajak.od, kurs = pajak.kurs;
+    for (let i = 0; i < 4; i++) {
+      const n = wybierzZKierunku(w, poprz, [kurs.x, kurs.y]);
+      if (n === null) break;
+      kurs = zwrotNici(w, n); poprz = w; w = n;
+    }
+    return w;
+  }
+  if (o.nr === 2) return lustro(p);   // zachodzi z drugiej strony sieci
+  const d = odleglosci(siec.sasiedzi, p)[o.do];
+  return d > 6 ? p : ROGI[3];
+}
+
+function osaWWezle(o) {
+  const opcje = siec.sasiedzi[o.do].filter((n) => n !== o.od);
+  const pula = opcje.length ? opcje : siec.sasiedzi[o.do];
+  let cel;
+  if (o.stan === "strach") {
+    cel = pula[Math.floor(Math.random() * pula.length)];
+  } else if (o.stan === "gniazdo") {
+    cel = siec.sasiedzi[o.do][Math.floor(Math.random() * siec.sasiedzi[o.do].length)];
+  } else {
+    const d = odleglosci(siec.sasiedzi, celOsy(o));
+    cel = pula.reduce((naj, n) => (d[n] < d[naj] ? n : naj), pula[0]);
+  }
+  o.od = o.do; o.do = cel; o.t = 0; o.len = dlugoscNici(o.od, cel);
+}
+
+function predkoscOsy(o) {
+  const baza = bok * (0.168 + Math.min(poziom - 1, 6) * 0.008);
+  if (o.stan === "zjedzona") return bok * 0.46;
+  if (o.stan === "strach") return bok * 0.105;
+  return baza;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Klatka
+// ══════════════════════════════════════════════════════════════════
+function krok(dt) {
+  if (przerwa > 0) {
+    przerwa -= dt;
+    if (przerwa <= 0) {
+      if (tryb === "ginie") {
+        if (zycia > 0) { ustawPostacie(); tryb = "gra"; }
+        else koniec();
+      } else if (tryb === "czysta") {
+        poziom++; nowaSiec(); tryb = "gra";
+      }
+    }
+    return;
+  }
+  if (tryb !== "gra") return;
+
+  zegar += dt;
+  blysk += dt;
+
+  // Rozkład faz: osy raz gonią, raz rozchodzą się po rogach sieci.
+  if (strach <= 0) {
+    fazaCzas += dt;
+    const limit = FAZY[Math.min(fazaNr, FAZY.length - 1)];
+    if (fazaCzas > limit) { fazaNr++; fazaCzas = 0; }
+  }
+  rozproszenie = fazaNr % 2 === 0 && FAZY[Math.min(fazaNr, FAZY.length - 1)] !== Infinity;
+
+  // — pająk —
+  const v = bok * 0.225;
+  if (pajak.stoi) {
+    if (pajak.chce) {
+      const cel = wybierzZKierunku(pajak.do, null, KATY[pajak.chce]);
+      if (cel !== null) { ruszPajaka(pajak.do, cel); pajak.stoi = false; pajak.chce = null; }
+    }
+  } else {
+    const przed = pajak.t;
+    pajak.t += (v * dt) / pajak.len;
+    pajak.krok += v * dt * 0.06;
+    if (przed < 0.5 && pajak.t >= 0.5) zjedzNic();
+    while (pajak.t >= 1) {
+      pajak.t -= 1;
+      zjedzWezel(pajak.do);
+      pajakWWezle();
+      if (pajak.stoi) { pajak.t = 1; break; }
+      pajak.t = Math.min(pajak.t, 0.999);
+    }
+  }
+
+  // — osy —
+  for (const o of osy) {
+    o.skrzydla += dt * 26;
+    if (o.stan === "gniazdo") {
+      o.czekaj -= dt;
+      if (o.czekaj <= 0) {
+        o.stan = "goni";
+        const wyjscie = WYJSCIA[o.nr % WYJSCIA.length];
+        o.od = HUB; o.do = wezel(0, wyjscie); o.t = 0; o.len = dlugoscNici(HUB, o.do);
+      }
+      continue;
+    }
+    const vo = predkoscOsy(o);
+    o.t += (vo * dt) / o.len;
+    while (o.t >= 1) {
+      o.t -= 1;
+      if (o.stan === "zjedzona" && o.do === HUB) {
+        o.stan = "gniazdo"; o.czekaj = 1.6; o.t = 0; o.od = HUB; o.do = HUB; o.len = 1;
+        break;
+      }
+      osaWWezle(o);
+      o.t = Math.min(o.t, 0.999);
+    }
+  }
+
+  if (strach > 0) {
+    strach -= dt;
+    if (strach <= 0) {
+      strach = 0; mnoznik = 1;
+      for (const o of osy) if (o.stan === "strach") o.stan = "goni";
+    }
+  }
+
+  sprawdzZderzenia();
+  if (doZjedzenia <= 0) {
+    tryb = "czysta"; przerwa = 1.7;
+    wynik += 250 + poziom * 50;
+    odswiez();
+  }
+}
+
+function zjedzNic() {
+  const k = klucz(pajak.od, pajak.do);
+  if (muchy.delete(k)) { wynik += 10; doZjedzenia--; pisk(660 + (doZjedzenia % 2) * 120, 0.035, 0.05); odswiez(); }
+}
+
+function zjedzWezel(w) {
+  if (muchy.delete(w)) { wynik += 10; doZjedzenia--; pisk(720, 0.035, 0.05); odswiez(); }
+  else if (rosa.delete(w)) {
+    wynik += 50; doZjedzenia--; strach = Math.max(4, 8 - poziom * 0.5); mnoznik = 1;
+    for (const o of osy) if (o.stan === "goni") {
+      o.stan = "strach";
+      [o.od, o.do] = [o.do, o.od]; o.t = 1 - o.t;
+    }
+    pisk(180, 0.4, 0.12, "sawtooth");
+    odswiez();
+  }
+}
+
+function sprawdzZderzenia() {
+  const p = naNici(pajak.od, pajak.do, pajak.t);
+  const zasieg = bok * 0.026;
+  for (const o of osy) {
+    if (o.stan === "zjedzona" || o.stan === "gniazdo") continue;
+    const q = naNici(o.od, o.do, o.t);
+    if (Math.hypot(p.x - q.x, p.y - q.y) > zasieg) continue;
+    if (o.stan === "strach") {
+      o.stan = "zjedzona";
+      wynik += 200 * mnoznik;
+      mnoznik = Math.min(mnoznik * 2, 8);
+      pisk(900, 0.18, 0.1, "square");
+      odswiez();
+    } else {
+      zycia--;
+      tryb = "ginie"; przerwa = 1.5; pajak.zwiniety = 0;
+      pisk(220, 0.6, 0.14, "triangle");
+      odswiez();
+      return;
+    }
+  }
+}
+
+function koniec() {
+  tryb = "koniec";
+  if (wynik > rekord) {
+    rekord = wynik;
+    try { localStorage.setItem("pajak-rekord", String(rekord)); } catch (e) {}
+  }
+  pokaz("Sieć opustoszała", `Zebrałeś <strong>${wynik}</strong> punktów na ${poziom}. sieci. Rekord: <strong>${rekord}</strong>.`, "Jeszcze raz");
+  odswiez();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Rysowanie
+// ══════════════════════════════════════════════════════════════════
+function rysuj() {
+  const w = plotno.width, h = plotno.height;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.restore();
+
+  rysujSiec();
+  rysujJedzenie();
+  for (const o of osy) if (o.stan !== "gniazdo" || tryb === "gra") rysujOse(o);
+  if (tryb !== "koniec") rysujPajaka();
+}
+
+function rysujSiec() {
+  ctx.lineCap = "round";
+  for (const [a, b] of siec.krawedzie) {
+    ctx.strokeStyle = "rgba(168,196,180,0.44)";
+    ctx.lineWidth = Math.max(1, bok * 0.0026);
+    ctx.beginPath();
+    if (a !== HUB && b !== HUB && pierscien(a) === pierscien(b)) {
+      const sa = szprycha(a), sb = szprycha(b);
+      const zwrot = (sb - sa + S) % S === 1 ? 1 : -1;
+      const kat = sa * KROK;
+      ctx.arc(sx, sy, promienPierscienia(pierscien(a)), kat, kat + zwrot * KROK, zwrot < 0);
+    } else {
+      const p = pozycja(a), q = pozycja(b);
+      ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+    }
+    ctx.stroke();
+  }
+  // Gniazdo os — jaśniejszy splot w środku.
+  ctx.fillStyle = "rgba(244,197,66,0.10)";
+  ctx.beginPath();
+  ctx.arc(sx, sy, promienMax * 0.085, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(244,197,66,0.35)";
+  ctx.lineWidth = Math.max(1, bok * 0.002);
+  ctx.stroke();
+}
+
+function rysujJedzenie() {
+  const r = bok * 0.0062;
+  ctx.fillStyle = "rgba(206,218,199,0.85)";
+  for (const m of muchy) {
+    let p;
+    if (typeof m === "number") p = pozycja(m);
+    else { const [a, b] = m.split("_").map(Number); p = naNici(a, b, 0.5); }
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, r * 1.15, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const puls = 0.7 + 0.3 * Math.sin(blysk * 4);
+  for (const d of rosa) {
+    const p = pozycja(d);
+    const rr = bok * 0.017 * puls;
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.4);
+    g.addColorStop(0, "rgba(127,227,208,0.95)");
+    g.addColorStop(1, "rgba(127,227,208,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr * 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#DFFFF7";
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr * 0.6, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function rysujPajaka() {
+  const p = naNici(pajak.od, pajak.do, pajak.t);
+  const a = Math.atan2(pajak.kurs.y, pajak.kurs.x);
+  const r = bok * 0.0195;
+  const zwija = tryb === "ginie" ? Math.min(1, (1.5 - Math.max(0, przerwa)) / 1.5) : 0;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(a);
+
+  // nogi
+  ctx.strokeStyle = "#5A4430";
+  ctx.lineWidth = Math.max(1.2, r * 0.19);
+  ctx.lineCap = "round";
+  const rozstaw = [-1.05, -0.5, 0.5, 1.05];
+  for (let i = 0; i < 8; i++) {
+    const strona = i < 4 ? -1 : 1;
+    const baza = rozstaw[i % 4];
+    const faza = Math.sin(pajak.krok + i * 1.3) * (1 - zwija) * 0.22;
+    const dl = r * (1.75 - zwija * 1.1);
+    const k1 = baza + faza * strona;
+    const kx = Math.cos(k1) * dl * 0.6, ky = Math.sin(k1) * dl * 0.6 * strona;
+    const sxx = Math.cos(k1 - 0.35 * strona) * dl, syy = Math.sin(k1 - 0.35 * strona) * dl * strona;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(kx, ky - r * 0.5 * strona * (1 - zwija));
+    ctx.lineTo(sxx, syy);
+    ctx.stroke();
+  }
+
+  // odwłok i głowotułów
+  ctx.fillStyle = "#3A2A1E";
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.55, 0, r * 0.95, r * 0.82, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#E5A13A";
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.55, 0, r * 0.42, r * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4A382A";
+  ctx.beginPath();
+  ctx.ellipse(r * 0.35, 0, r * 0.6, r * 0.52, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // oczy
+  ctx.fillStyle = zwija > 0.4 ? "#7A6B5A" : "#F6E7C8";
+  for (const dy of [-0.24, 0.24]) {
+    ctx.beginPath();
+    ctx.arc(r * 0.75, dy * r, r * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function rysujOse(o) {
+  const p = naNici(o.od, o.do, o.t);
+  const q = naNici(o.od, o.do, Math.min(1, o.t + 0.05));
+  const a = Math.atan2(q.y - p.y, q.x - p.x);
+  const r = bok * 0.017;
+  const konczy = strach > 0 && strach < 2 && Math.floor(strach * 6) % 2 === 0;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(a);
+
+  if (o.stan !== "zjedzona") {
+    // skrzydła
+    ctx.fillStyle = "rgba(220,240,255,0.28)";
+    const trzepot = Math.sin(o.skrzydla) * 0.5;
+    for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.rotate(s * (0.7 + trzepot * 0.3));
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.2, s * r * 0.6, r * 0.85, r * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    const przod = o.stan === "strach" ? (konczy ? "#E8F0EA" : "#8FBFE8") : "#F4C542";
+    const pas = o.stan === "strach" ? (konczy ? "#8FA79A" : "#2A3F52") : "#241C10";
+    ctx.fillStyle = przod;
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.35, 0, r * 1.0, r * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = pas;
+    for (const dx of [-0.95, -0.4, 0.1]) {
+      ctx.beginPath();
+      ctx.ellipse(dx * r, 0, r * 0.13, r * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = o.stan === "strach" ? przod : "#241C10";
+    ctx.beginPath();
+    ctx.ellipse(r * 0.6, 0, r * 0.45, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // oczy widać zawsze — po zjedzeniu wracają same do gniazda
+  ctx.fillStyle = "#F2FBF6";
+  for (const dy of [-0.3, 0.3]) {
+    ctx.beginPath();
+    ctx.ellipse(r * (o.stan === "zjedzona" ? 0.1 : 0.68), dy * r, r * 0.24, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#12201A";
+  for (const dy of [-0.3, 0.3]) {
+    ctx.beginPath();
+    ctx.arc(r * (o.stan === "zjedzona" ? 0.18 : 0.76), dy * r, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Interfejs
+// ══════════════════════════════════════════════════════════════════
+function odswiez() {
+  el.wynik.textContent = wynik;
+  el.rekord.textContent = Math.max(rekord, wynik);
+  el.poziom.textContent = poziom;
+  el.zycia.innerHTML = "";
+  for (let i = 0; i < Math.max(0, zycia); i++) {
+    const i2 = document.createElement("i");
+    i2.innerHTML =
+      '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+      '<g stroke="#8A6A45" stroke-width="1" stroke-linecap="round" fill="none">' +
+      '<path d="M6.5 8 2.5 4.5M6.5 8 1.5 8M6.5 8 2.5 11.5M6.5 8 4.5 14M9.5 8 13.5 4.5M9.5 8 14.5 8M9.5 8 13.5 11.5M9.5 8 11.5 14"/></g>' +
+      '<ellipse cx="8" cy="8" rx="4" ry="3.3" fill="#3A2A1E"/>' +
+      '<ellipse cx="8" cy="8" rx="1.7" ry="2" fill="#E5A13A"/></svg>';
+    el.zycia.appendChild(i2);
+  }
+  el.zycia.setAttribute("aria-label", `Życia: ${Math.max(0, zycia)}`);
+}
+
+function pokaz(tytul, tresc, przycisk) {
+  el.tytul.textContent = tytul;
+  el.tresc.innerHTML = tresc;
+  el.przycisk.textContent = przycisk;
+  el.zaslona.classList.add("widoczna");
+}
+const schowaj = () => el.zaslona.classList.remove("widoczna");
+
+el.przycisk.addEventListener("click", () => {
+  odblokujDzwiek();
+  if (tryb === "koniec" || tryb === "start") nowaGra();
+  tryb = "gra"; zegar = 0; przerwa = 0;
+  schowaj(); odswiez();
+  el.przycisk.blur();   // żeby Spacja/Enter nie wracały do przycisku zamiast do gry
+});
+
+function pauza() {
+  if (tryb === "gra") {
+    tryb = "pauza";
+    pokaz("Pauza", "Muchy poczekają.", "Wracam");
+  } else if (tryb === "pauza") { tryb = "gra"; schowaj(); }
+}
+
+const KLAWISZE = {
+  ArrowUp: "gora", ArrowDown: "dol", ArrowLeft: "lewo", ArrowRight: "prawo",
+  w: "gora", s: "dol", a: "lewo", d: "prawo",
+  W: "gora", S: "dol", A: "lewo", D: "prawo",
+};
+addEventListener("keydown", (e) => {
+  const k = KLAWISZE[e.key];
+  if (k) { e.preventDefault(); steruj(k); return; }
+  if (e.key === " " || e.key === "p" || e.key === "P") { e.preventDefault(); pauza(); }
+});
+
+function steruj(kier) {
+  if (tryb !== "gra") return;
+  pajak.chce = kier;
+  // Zawracanie w pół nici jest natychmiastowe — jak w pierwowzorze.
+  const przodem = pajak.kurs.x * KATY[kier][0] + pajak.kurs.y * KATY[kier][1];
+  if (!pajak.stoi && przodem < -0.4) {
+    [pajak.od, pajak.do] = [pajak.do, pajak.od];
+    pajak.t = 1 - pajak.t;
+    pajak.kurs = zwrotNici(pajak.od, pajak.do);
+    pajak.chce = null;
+  }
+}
+
+for (const b of document.querySelectorAll(".krzyzak button")) {
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); odblokujDzwiek(); steruj(b.dataset.kier); });
+}
+
+// przesunięcie palcem po sieci
+let dotyk = null;
+plotno.addEventListener("pointerdown", (e) => { dotyk = { x: e.clientX, y: e.clientY }; odblokujDzwiek(); });
+plotno.addEventListener("pointerup", (e) => {
+  if (!dotyk) return;
+  const dx = e.clientX - dotyk.x, dy = e.clientY - dotyk.y;
+  dotyk = null;
+  if (Math.hypot(dx, dy) < 24) return;
+  steruj(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "prawo" : "lewo") : (dy > 0 ? "dol" : "gora"));
+});
+
+// ——— dźwięk ———
+function odblokujDzwiek() {
+  if (!dzwiekWl || audio) return;
+  try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
+}
+el.dzwiek.addEventListener("click", () => {
+  dzwiekWl = !dzwiekWl;
+  el.dzwiek.textContent = "Dźwięk: " + (dzwiekWl ? "wł." : "wył.");
+  el.dzwiek.setAttribute("aria-pressed", String(dzwiekWl));
+  odblokujDzwiek();
+});
+function pisk(hz, dlugosc, glosnosc, ksztalt) {
+  if (!dzwiekWl || !audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = ksztalt || "sine";
+  o.frequency.value = hz;
+  g.gain.setValueAtTime(glosnosc, audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dlugosc);
+  o.connect(g); g.connect(audio.destination);
+  o.start(); o.stop(audio.currentTime + dlugosc);
+}
+
+// ——— pętla ———
+let ostatnia = 0;
+function klatka(teraz) {
+  const dt = Math.min(0.05, (teraz - ostatnia) / 1000 || 0);
+  ostatnia = teraz;
+  krok(dt);
+  if (tryb === "ginie" && przerwa > 0) blysk += dt;
+  rysuj();
+  requestAnimationFrame(klatka);
+}
+
+zmierz();
+tryb = "start";
+nowaGra();
+odswiez();
+requestAnimationFrame(klatka);
+})();
+</script>
+</body>
+</html>
