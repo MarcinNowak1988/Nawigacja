@@ -219,6 +219,32 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 .odpowiedzi button.zle{background:transparent;color:var(--alarm);border-color:var(--alarm);opacity:.45}
 .zaslona .quiz-info{color:var(--tekst-cichy);min-height:1.4em}
 
+/* ——— szachowa druga szansa ——— */
+.szachownica{
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  width:min(300px,68vw);
+  aspect-ratio:1;
+  border:2px solid var(--jedwab-cichy);
+  border-radius:10px;
+  overflow:hidden;
+}
+.pole-szach{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:clamp(18px,5.6vw,30px);
+  line-height:1;
+  cursor:pointer;
+  user-select:none;
+}
+.pole-szach.jasne{background:#2E4238}
+.pole-szach.ciemne{background:#152019}
+.pole-szach.wybrane{background:rgba(127,227,208,.4)}
+.figura-biala{color:#F3ECD8;text-shadow:0 1px 1px rgba(0,0,0,.6)}
+.figura-czarna{color:#0E0A07;text-shadow:0 1px 1px rgba(243,236,216,.25)}
+
 /* ——— stopka: sterowanie ——— */
 .spod{
   width:min(760px,100%);
@@ -313,6 +339,14 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
     <p class="zadanie" id="quiz-zadanie">7 + 5</p>
     <div class="odpowiedzi" id="quiz-odpowiedzi"></div>
     <p class="quiz-info" id="quiz-info" role="status">Ile to jest?</p>
+  </div>
+
+  <div class="zaslona szachy" id="szachy">
+    <h2>Ostatnia szansa</h2>
+    <p>Białe zaczynają i dają mata w jednym ruchu. Kliknij swoją figurę, a potem pole, na które ma się ruszyć.</p>
+    <div class="szachownica" id="szachownica"></div>
+    <p class="quiz-info" id="szachy-info" role="status">Twój ruch.</p>
+    <button class="male" id="szachy-podpowiedz" type="button">Podpowiedź</button>
   </div>
 </div>
 
@@ -558,7 +592,7 @@ const el = {
 try { rekord = parseInt(localStorage.getItem("pajak-rekord") || "0", 10) || 0; } catch (e) { rekord = 0; }
 
 function nowaGra() {
-  wynik = 0; poziom = 1; zycia = 3;
+  wynik = 0; poziom = 1; zycia = 5;
   nowaSiec();
 }
 
@@ -673,7 +707,7 @@ function krok(dt) {
     if (przerwa <= 0) {
       if (tryb === "ginie") {
         if (zycia > 0) { ustawPostacie(); tryb = "gra"; }
-        else koniec();
+        else zacznijSzachy();
       } else if (tryb === "czysta") {
         poziom++; nowaSiec(); tryb = "gra";
       }
@@ -796,16 +830,6 @@ function sprawdzZderzenia() {
   }
 }
 
-function koniec() {
-  tryb = "koniec";
-  if (wynik > rekord) {
-    rekord = wynik;
-    try { localStorage.setItem("pajak-rekord", String(rekord)); } catch (e) {}
-  }
-  pokaz("Pajęczyna opustoszała", `Zebrałeś <strong>${wynik}</strong> punktów na ${poziom}. planszy. Rekord: <strong>${rekord}</strong>.`, "Jeszcze raz");
-  odswiez();
-}
-
 // ══════════════════════════════════════════════════════════════════
 //  Rysowanie
 // ══════════════════════════════════════════════════════════════════
@@ -819,7 +843,7 @@ function rysuj() {
   rysujSiec();
   rysujJedzenie();
   for (const o of osy) if (o.stan !== "gniazdo" || tryb === "gra") rysujOse(o);
-  if (tryb !== "koniec") rysujPajaka();
+  rysujPajaka();
   rysujWskaznik();
 }
 
@@ -1008,8 +1032,12 @@ function rysujOse(o) {
 //  Interfejs
 // ══════════════════════════════════════════════════════════════════
 function odswiez() {
+  if (wynik > rekord) {
+    rekord = wynik;
+    try { localStorage.setItem("pajak-rekord", String(rekord)); } catch (e) {}
+  }
   el.wynik.textContent = wynik;
-  el.rekord.textContent = Math.max(rekord, wynik);
+  el.rekord.textContent = rekord;
   el.poziom.textContent = poziom;
   el.zycia.innerHTML = "";
   for (let i = 0; i < Math.max(0, zycia); i++) {
@@ -1177,6 +1205,142 @@ function zatrzymajMuzyke() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  Szachowa druga szansa — zamiast końca gry po utracie piątego życia.
+//  Pięć ręcznie sprawdzonych pozycji „białe zaczynają i dają mata w jednym
+//  ruchu": tylko król i hetman albo wieża przeciwko samotnemu królowi, żeby
+//  nie trzeba było sprawdzać ogólnych zasad szachowych — porównujemy jedynie,
+//  czy kliknięty ruch to dokładnie ten zapisany w zagadce.
+//  Notacja pól jak w algebraicznej: litera-kolumna (a–h) + cyfra-wiersz (1–8).
+//  Figury: K-król, H-hetman, W-wieża; pierwsza litera to kolor (b-biała, c-czarna).
+// ══════════════════════════════════════════════════════════════════
+const PUZZLE_SZACHOWE = [
+  {
+    figury: { a7: "bH", e6: "bK", e8: "cK" },
+    ruch: ["a7", "e7"],
+    podpowiedz: "Hetman podchodzi siódmą linią tuż pod króla — osłania go twój własny król.",
+  },
+  {
+    figury: { b1: "bH", c7: "bK", a8: "cK" },
+    ruch: ["b1", "b8"],
+    podpowiedz: "Ustaw hetmana na tej samej kolumnie co czarny król, przy samym brzegu planszy.",
+  },
+  {
+    figury: { a1: "bW", g6: "bK", h8: "cK" },
+    ruch: ["a1", "a8"],
+    podpowiedz: "Wieża może dać szacha wzdłuż całej ostatniej linii — nic jej tam nie zasłania.",
+  },
+  {
+    figury: { h8: "bW", b3: "bK", a1: "cK" },
+    ruch: ["h8", "h1"],
+    podpowiedz: "Wieża szachuje wzdłuż dolnej linii, a twój król pilnuje ucieczki obok.",
+  },
+  {
+    figury: { b8: "bH", f2: "bK", h1: "cK" },
+    ruch: ["b8", "h8"],
+    podpowiedz: "Hetman dojeżdża na sam skraj planszy i obejmuje całą kolumnę h.",
+  },
+];
+const GLIFY = { K: "♚", H: "♛", W: "♜" };
+const elSz = {
+  box: document.getElementById("szachy"),
+  plansza: document.getElementById("szachownica"),
+  info: document.getElementById("szachy-info"),
+  podpowiedz: document.getElementById("szachy-podpowiedz"),
+};
+let szachy = { puzzle: null, wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
+let ostatniaZagadka = -1;
+
+function losujZagadke() {
+  if (PUZZLE_SZACHOWE.length === 1) return 0;
+  let i;
+  do { i = Math.floor(Math.random() * PUZZLE_SZACHOWE.length); } while (i === ostatniaZagadka);
+  ostatniaZagadka = i;
+  return i;
+}
+
+function rysujSzachownice() {
+  elSz.plansza.innerHTML = "";
+  for (let wiersz = 0; wiersz < 8; wiersz++) {
+    for (let kol = 0; kol < 8; kol++) {
+      const pole = String.fromCharCode(97 + kol) + (8 - wiersz);
+      const div = document.createElement("div");
+      div.className = "pole-szach " + ((kol + wiersz) % 2 === 0 ? "jasne" : "ciemne");
+      if (pole === szachy.wybrane) div.classList.add("wybrane");
+      div.dataset.pole = pole;
+      const figura = szachy.puzzle.figury[pole];
+      if (figura) {
+        const span = document.createElement("span");
+        span.className = figura[0] === "b" ? "figura-biala" : "figura-czarna";
+        span.textContent = GLIFY[figura[1]];
+        div.appendChild(span);
+      }
+      elSz.plansza.appendChild(div);
+    }
+  }
+}
+
+function pokazPodpowiedzSzachowa() {
+  szachy.podpowiedzUzyta = true;
+  elSz.podpowiedz.disabled = true;
+  elSz.info.textContent = "Podpowiedź: " + szachy.puzzle.podpowiedz;
+}
+elSz.podpowiedz.addEventListener("click", pokazPodpowiedzSzachowa);
+
+elSz.plansza.addEventListener("click", (e) => {
+  const div = e.target.closest(".pole-szach");
+  if (!div || tryb !== "szachy" || szachy.rozwiazane) return;
+  const pole = div.dataset.pole;
+  const figura = szachy.puzzle.figury[pole];
+  const swojaFigura = figura && figura[0] === "b";
+
+  if (szachy.wybrane === null) {
+    if (swojaFigura) { szachy.wybrane = pole; rysujSzachownice(); }
+    return;
+  }
+  if (pole === szachy.wybrane) { szachy.wybrane = null; rysujSzachownice(); return; }
+  if (swojaFigura) { szachy.wybrane = pole; rysujSzachownice(); return; }
+
+  const [od, doP] = szachy.puzzle.ruch;
+  if (szachy.wybrane === od && pole === doP) {
+    rozwiazanoSzachy();
+    return;
+  }
+  szachy.blad++;
+  elSz.info.textContent = "Spróbuj jeszcze raz.";
+  pisk(200, 0.18, 0.09, "triangle");
+  // Pierwsza pomyłka od razu odsłania podpowiedź — to ta „druga szansa"
+  // ma być łatwa do wygrania, nie kolejna zagadka do rozwiązania w ciemno.
+  if (szachy.blad >= 1 && !szachy.podpowiedzUzyta) pokazPodpowiedzSzachowa();
+  szachy.wybrane = null;
+  rysujSzachownice();
+});
+
+function zacznijSzachy() {
+  tryb = "szachy";
+  szachy = { puzzle: PUZZLE_SZACHOWE[losujZagadke()], wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
+  elSz.info.textContent = "Twój ruch.";
+  elSz.podpowiedz.disabled = false;
+  elSz.box.classList.add("widoczna");
+  rysujSzachownice();
+}
+
+function rozwiazanoSzachy() {
+  szachy.rozwiazane = true;
+  const bonus = szachy.podpowiedzUzyta ? 1 : 3;
+  zycia += bonus;
+  elSz.info.textContent = szachy.podpowiedzUzyta
+    ? "Mat! +1 życie dzięki podpowiedzi."
+    : "Mat! +3 życia za samodzielne rozwiązanie.";
+  pisk(880, 0.25, 0.1);
+  odswiez();
+  setTimeout(() => {
+    elSz.box.classList.remove("widoczna");
+    ustawPostacie();
+    tryb = "gra";
+  }, 1600);
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  Quiz matematyczny — wejściówka do gry, poziom 7–8 lat
 //  (dodawanie i odejmowanie do 20, brakujący składnik, tabliczka 2/3/5, połowa).
 // ══════════════════════════════════════════════════════════════════
@@ -1280,7 +1444,7 @@ function koniecQuizu() {
   elQ.box.classList.remove("widoczna");
   nowaGra();
   wynik = quiz.bonus;
-  if (quiz.bezbledne === PYTAN) zycia = 4;
+  if (quiz.bezbledne === PYTAN) zycia = 6;
   quiz.blokada = false;
   tryb = "gra"; zegar = 0; przerwa = 0;
   odswiez();
@@ -1304,8 +1468,13 @@ if (location.hash === "#test") {
     return {
       x: p.x, y: p.y, kierunek: pajak.kierunek, kierunekNazwa: pajak.kierunekNazwa,
       chce: pajak.chce, zatrzymany: pajak.zatrzymany, tryb, zostalo: doZjedzenia,
+      zycia, szachyWidoczne: elSz.box.classList.contains("widoczna"),
+      puzzleRuch: szachy.puzzle ? szachy.puzzle.ruch : null,
+      puzzleIdx: szachy.puzzle ? PUZZLE_SZACHOWE.indexOf(szachy.puzzle) : -1,
     };
   };
+  // Symuluje utratę życia bez czekania na osy — do testowania samej zagadki szachowej.
+  window.pajakUtracZycie = () => { zycia--; tryb = "ginie"; przerwa = 1.5; odswiez(); };
 }
 
 zmierz();
