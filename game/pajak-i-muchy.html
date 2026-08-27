@@ -1108,6 +1108,7 @@ el.dzwiek.addEventListener("click", () => {
   el.dzwiek.textContent = "Dźwięk: " + (dzwiekWl ? "wł." : "wył.");
   el.dzwiek.setAttribute("aria-pressed", String(dzwiekWl));
   odblokujDzwiek();
+  if (dzwiekWl) zapetlMuzyke(); else zatrzymajMuzyke();
 });
 function pisk(hz, dlugosc, glosnosc, ksztalt) {
   if (!dzwiekWl || !audio) return;
@@ -1118,6 +1119,61 @@ function pisk(hz, dlugosc, glosnosc, ksztalt) {
   g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dlugosc);
   o.connect(g); g.connect(audio.destination);
   o.start(); o.stop(audio.currentTime + dlugosc);
+}
+
+// ——— muzyka w tle ———
+// Prosta, zapętlona melodia bez plików dźwiękowych — same oscylatory Web Audio,
+// żeby gra została jednym samodzielnym plikiem HTML.
+const SKALA = [220.0, 261.63, 293.66, 329.63, 392.0];   // A3 C4 D4 E4 G4 — pentatonika a-moll, nocny nastrój
+// [indeks w SKALI (null = pauza), czas trwania w ćwierćnutach] — cztery takty 4/4.
+const MELODIA = [
+  [0, 1], [2, 1], [3, 1], [null, 1],
+  [4, 1], [3, 1], [2, 1], [null, 1],
+  [0, 1], [3, 1], [2, 1], [1, 1],
+  [0, 2], [null, 2],
+];
+const CWIERCNUTA = 60 / 92;   // tempo 92 uderzenia/min
+let muzykaTimeout = null;
+
+function zagrajNute(czas, hz, dlugosc) {
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = "triangle";
+  o.frequency.value = hz;
+  g.gain.setValueAtTime(0, czas);
+  g.gain.linearRampToValueAtTime(0.05, czas + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, czas + dlugosc * 0.92);
+  o.connect(g); g.connect(audio.destination);
+  o.start(czas); o.stop(czas + dlugosc);
+}
+
+function zagrajDron(czas, dlugosc) {
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = "sine";
+  o.frequency.value = SKALA[0] / 2;
+  g.gain.setValueAtTime(0, czas);
+  g.gain.linearRampToValueAtTime(0.045, czas + 0.4);
+  g.gain.linearRampToValueAtTime(0, czas + dlugosc);
+  o.connect(g); g.connect(audio.destination);
+  o.start(czas); o.stop(czas + dlugosc);
+}
+
+function zapetlMuzyke() {
+  if (!dzwiekWl || !audio) return;
+  const start = audio.currentTime + 0.05;
+  let t = start;
+  for (const [idx, dl] of MELODIA) {
+    const dlugosc = dl * CWIERCNUTA;
+    if (idx !== null) zagrajNute(t, SKALA[idx], dlugosc * 0.85);
+    t += dlugosc;
+  }
+  zagrajDron(start, t - start);
+  // Cały takt jest już zaplanowany z wyprzedzeniem w AudioContext — kolejne
+  // wywołanie tylko dogrywa następną pętlę, dokładnie gdy ta się kończy.
+  muzykaTimeout = setTimeout(zapetlMuzyke, (t - start) * 1000);
+}
+
+function zatrzymajMuzyke() {
+  if (muzykaTimeout) { clearTimeout(muzykaTimeout); muzykaTimeout = null; }
 }
 
 // ══════════════════════════════════════════════════════════════════

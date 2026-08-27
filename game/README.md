@@ -26,6 +26,8 @@ Komplet bez pomyłki daje dodatkowe, czwarte życie na start.
 
 Strzałki albo `WASD` wskazują kierunek; `Spacja` pauzuje.
 Na telefonie: przesunięcie palcem po planszy albo krzyżak pod nią.
+Przycisk „Dźwięk" włącza efekty i cichą muzykę w tle — wyłączony domyślnie,
+żeby otwarcie strony nikogo nie zaskoczyło dźwiękiem.
 
 ## Jak to działa
 
@@ -53,6 +55,10 @@ Na telefonie: przesunięcie palcem po planszy albo krzyżak pod nią.
   rogach zmieniają się jak w pierwowzorze.
 - Prędkości liczone są w komórkach na sekundę, nie w pikselach — tempo gry
   nie zależy od wielkości płótna ani gęstości siatki.
+- **Muzyka** to zapętlona, czterotaktowa melodia w pentatonice a-moll grana
+  samymi oscylatorami Web Audio — bez pliku dźwiękowego, żeby gra została
+  jednym samodzielnym plikiem HTML. Cała pętla jest planowana w AudioContext
+  z wyprzedzeniem, więc nie ma słyszalnych zacięć na styku powtórzeń.
 
 Poprawność generatora planszy (spójność, symetria, brak ślepych zaułków,
 wszystkie nici osiowe) i realną skuteczność sterowania zmierzono automatycznymi
