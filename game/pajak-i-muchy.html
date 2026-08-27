@@ -289,13 +289,13 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 <body>
 <header class="szczyt">
   <h1>Pająk i Muchy</h1>
-  <p class="podtytul">Nocna sieć · 12 szprych</p>
+  <p class="podtytul">Nocny ogród · siatka 9×9</p>
 </header>
 
 <section class="stan" aria-label="Stan gry">
   <div class="pole"><span>Wynik</span><b id="wynik">0</b></div>
   <div class="pole"><span>Rekord</span><b id="rekord">0</b></div>
-  <div class="pole"><span>Sieć</span><b id="poziom">1</b></div>
+  <div class="pole"><span>Plansza</span><b id="poziom">1</b></div>
   <div class="pole"><span>Życia</span><div class="zycia" id="zycia"></div></div>
 </section>
 
@@ -303,7 +303,7 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
   <canvas id="plotno"></canvas>
   <div class="zaslona widoczna" id="zaslona">
     <h2 id="zaslona-tytul">Zapolujmy</h2>
-    <p id="zaslona-tresc">Chodzisz pająkiem po pajęczynie i zjadasz muchy. <strong>Osy</strong> chodzą po tej samej sieci — dotknięcie kosztuje życie. Zjedz <strong>kroplę rosy</strong>, a przez chwilę to ty polujesz na nie. Najpierw <strong>pięć zadań z matematyki</strong>.</p>
+    <p id="zaslona-tresc">Chodzisz pająkiem po siatce jedwabnych nici i zjadasz muchy. <strong>Osy</strong> chodzą po tej samej planszy — dotknięcie kosztuje życie. Zjedz <strong>kroplę rosy</strong>, a przez chwilę to ty polujesz na nie. Najpierw <strong>pięć zadań z matematyki</strong>.</p>
     <button id="zaslona-przycisk" type="button">Zaczynamy</button>
   </div>
 
@@ -336,22 +336,45 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 "use strict";
 
 // ══════════════════════════════════════════════════════════════════
-//  Sieć: graf biegunowy — HUB w środku, R pierścieni po S szprych.
-//  Węzeł (r,s) ma numer 1 + r*S + s; HUB to 0.
+//  Plansza: prostokątna siatka jak w Pac-Manie — nie okrąg. Węzeł
+//  (wiersz,kolumna) ma numer wiersz*COLS+kolumna; HUB to gniazdo os
+//  w środku. Dzięki osiowej siatce „góra" na klawiaturze to zawsze
+//  dokładnie „góra" na planszy — bez tego, na dawnej sieci kołowej,
+//  większość nici biegła pod kątem i sterowanie musiało zgadywać
+//  najbliższy kierunek, więc czasem nie dawało się wejść na daną nić.
 // ══════════════════════════════════════════════════════════════════
-const S = 12;            // szprychy — co 30°, więc strzałki trafiają dokładnie w nić
-const R = 5;             // pierścienie
-const HUB = 0;
-const LICZBA = 1 + R * S;
-const WYJSCIA = [0, 3, 6, 9];    // szprychy wychodzące z gniazda os
-const KROK = (Math.PI * 2) / S;
+const COLS = 9, ROWS = 9;         // nieparzyste, żeby środek wypadł dokładnie na siatce
+const LICZBA = COLS * ROWS;
+const HUB = Math.floor(ROWS / 2) * COLS + Math.floor(COLS / 2);
+const KATY = { gora: [0, -1], dol: [0, 1], lewo: [-1, 0], prawo: [1, 0] };
+const WYJSCIA = ["gora", "prawo", "dol", "lewo"];   // kierunek wyjścia z gniazda dla każdej osy
 
-const wezel = (r, s) => 1 + r * S + ((s % S) + S) % S;
-const pierscien = (id) => Math.floor((id - 1) / S);
-const szprycha = (id) => (id - 1) % S;
+const wezel = (r, c) => r * COLS + c;
+const wiersz = (id) => Math.floor(id / COLS);
+const kolumna = (id) => id % COLS;
 const klucz = (a, b) => (a < b ? a + "_" + b : b + "_" + a);
-// Odbicie względem osi pionowej — dzięki niemu sieć jest symetryczna.
-const lustro = (id) => (id === HUB ? HUB : wezel(pierscien(id), S / 2 - szprycha(id)));
+// Odbicie względem pionowej osi środkowej — dzięki niemu plansza jest symetryczna,
+// jak klasyczne plansze Pac-Mana.
+const lustro = (id) => wezel(wiersz(id), COLS - 1 - kolumna(id));
+
+// Sąsiad w danym kierunku wynikający z samej geometrii siatki — może nie mieć
+// tam nici. Używany przy budowie planszy i do sprawdzania granic.
+function sasiadGeom(id, kier) {
+  const [dx, dy] = KATY[kier];
+  const r = wiersz(id) + dy, c = kolumna(id) + dx;
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+  return wezel(r, c);
+}
+// Sąsiad, do którego rzeczywiście prowadzi nić w utkanej planszy.
+function sasiadNici(id, kier) {
+  const cel = sasiadGeom(id, kier);
+  return cel !== null && siec.sasiedzi[id].includes(cel) ? cel : null;
+}
+function kierunekMiedzy(a, b) {
+  const dx = kolumna(b) - kolumna(a), dy = wiersz(b) - wiersz(a);
+  for (const k in KATY) if (KATY[k][0] === dx && KATY[k][1] === dy) return k;
+  return null;
+}
 
 function losowacz(ziarno) {
   let a = ziarno >>> 0;
@@ -363,20 +386,34 @@ function losowacz(ziarno) {
   };
 }
 
+// Obwód planszy jako jedna pętla węzłów, w kolejności zgodnej z ruchem
+// wskazówek zegara — to nasz odpowiednik dawnej „zewnętrznej obręczy".
+function obwodGranicy() {
+  const lista = [];
+  for (let c = 0; c < COLS; c++) lista.push(wezel(0, c));
+  for (let r = 1; r < ROWS; r++) lista.push(wezel(r, COLS - 1));
+  for (let c = COLS - 2; c >= 0; c--) lista.push(wezel(ROWS - 1, c));
+  for (let r = ROWS - 2; r > 0; r--) lista.push(wezel(r, 0));
+  return lista;
+}
+
 // --- SIEC ---
 function utkajSiec(ziarno) {
   const rnd = losowacz(ziarno);
 
   const wszystkie = [];
-  for (let r = 0; r < R; r++)
-    for (let s = 0; s < S; s++) wszystkie.push([wezel(r, s), wezel(r, s + 1)]);
-  for (let r = 0; r < R - 1; r++)
-    for (let s = 0; s < S; s++) wszystkie.push([wezel(r, s), wezel(r + 1, s)]);
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      if (c + 1 < COLS) wszystkie.push([wezel(r, c), wezel(r, c + 1)]);
+      if (r + 1 < ROWS) wszystkie.push([wezel(r, c), wezel(r + 1, c)]);
+    }
 
-  // Nici, które są zawsze: promienie z gniazda i cała zewnętrzna obręcz.
+  // Nici, które są zawsze: promienie z gniazda i cała obwódka planszy —
+  // korytarz ucieczki dookoła, jak dawna zewnętrzna obręcz.
   const stale = [];
-  for (const s of WYJSCIA) stale.push([HUB, wezel(0, s)]);
-  for (let s = 0; s < S; s++) stale.push([wezel(R - 1, s), wezel(R - 1, s + 1)]);
+  const obwod = obwodGranicy();
+  for (let i = 0; i < obwod.length; i++) stale.push([obwod[i], obwod[(i + 1) % obwod.length]]);
+  for (const kier in KATY) stale.push([HUB, sasiadGeom(HUB, kier)]);
 
   const rodzic = new Int16Array(LICZBA).map((_, i) => i);
   const znajdz = (x) => {
@@ -394,7 +431,7 @@ function utkajSiec(ziarno) {
   const dodaj = (kr) => { wybrane.set(klucz(kr[0], kr[1]), kr); zlacz(kr[0], kr[1]); };
   stale.forEach(dodaj);
 
-  // Krawędzie łączymy w pary z ich odbiciem, żeby sieć została symetryczna.
+  // Krawędzie łączymy w pary z ich odbiciem, żeby plansza została symetryczna.
   const grupy = [];
   const zajete = new Set(wybrane.keys());
   for (const kr of wszystkie) {
@@ -431,25 +468,6 @@ function utkajSiec(ziarno) {
     }
   }
 
-  // Każdy węzeł musi mieć nić prowadzącą do środka albo na zewnątrz.
-  // Bez tego w wielu miejscach żadna nić nie szła „w górę ekranu" i strzałka
-  // trafiała w pustkę — to właśnie sprawiało wrażenie zepsutego sterowania.
-  // Z promieniem w każdym węźle wszystkie cztery strzałki mają w co trafić:
-  // promień daje kierunek do środka i na zewnątrz, a łuki — dwie strony wokół.
-  const promieniste = new Set();
-  for (const [a, b] of wybrane.values())
-    if (a === HUB || b === HUB || pierscien(a) !== pierscien(b)) { promieniste.add(a); promieniste.add(b); }
-  for (let r = 0; r < R; r++)
-    for (let s = 0; s < S; s++) {
-      const id = wezel(r, s);
-      if (promieniste.has(id)) continue;
-      const cel = r > 0 ? wezel(r - 1, s) : wezel(1, s);
-      for (const kr of [[id, cel], [lustro(id), lustro(cel)]]) {
-        dodaj(kr);
-        promieniste.add(kr[0]); promieniste.add(kr[1]);
-      }
-    }
-
   const sasiedzi = Array.from({ length: LICZBA }, () => []);
   for (const [a, b] of wybrane.values()) { sasiedzi[a].push(b); sasiedzi[b].push(a); }
   return { sasiedzi, krawedzie: [...wybrane.values()] };
@@ -472,11 +490,12 @@ function odleglosci(sasiedzi, cel) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Geometria: gdzie na ekranie leży węzeł i punkt na nici.
+//  Geometria: gdzie na ekranie leży węzeł. Siatka jest osiowa, więc
+//  wszystko jest linią prostą — bez łuków i bez trygonometrii.
 // ══════════════════════════════════════════════════════════════════
 const plotno = document.getElementById("plotno");
 const ctx = plotno.getContext("2d");
-let bok = 700, sx = 350, sy = 350, promienMax = 320;
+let bok = 700, sx = 350, sy = 350, komorka = 74;
 
 function zmierz() {
   const p = plotno.getBoundingClientRect();
@@ -487,63 +506,36 @@ function zmierz() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   sx = p.width / 2;
   sy = p.height / 2;
-  promienMax = Math.min(p.width, p.height) * 0.455;
+  komorka = (bok * 0.86) / (Math.max(COLS, ROWS) - 1);
 }
 new ResizeObserver(zmierz).observe(plotno);
 
-const promienPierscienia = (r) => promienMax * (0.24 + 0.76 * (r / (R - 1)));
-
 function pozycja(id) {
-  if (id === HUB) return { x: sx, y: sy };
-  const a = szprycha(id) * KROK;
-  const rad = promienPierscienia(pierscien(id));
-  return { x: sx + rad * Math.cos(a), y: sy + rad * Math.sin(a) };
+  return {
+    x: sx + (kolumna(id) - (COLS - 1) / 2) * komorka,
+    y: sy + (wiersz(id) - (ROWS - 1) / 2) * komorka,
+  };
 }
 
 function naNici(a, b, t) {
-  if (a === HUB || b === HUB) {
-    const p = pozycja(a), q = pozycja(b);
-    return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
-  }
-  const ra = pierscien(a), rb = pierscien(b);
-  if (ra === rb) {
-    const sa = szprycha(a), sb = szprycha(b);
-    const zwrot = (sb - sa + S) % S === 1 ? 1 : -1;
-    const kat = sa * KROK + zwrot * KROK * t;
-    const rad = promienPierscienia(ra);
-    return { x: sx + rad * Math.cos(kat), y: sy + rad * Math.sin(kat) };
-  }
-  const kat = szprycha(a) * KROK;
-  const rad = promienPierscienia(ra) + (promienPierscienia(rb) - promienPierscienia(ra)) * t;
-  return { x: sx + rad * Math.cos(kat), y: sy + rad * Math.sin(kat) };
+  const p = pozycja(a), q = pozycja(b);
+  return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
 }
 
-function dlugoscNici(a, b) {
-  if (a === HUB || b === HUB) {
-    const inny = a === HUB ? b : a;
-    return promienPierscienia(pierscien(inny));
-  }
-  const ra = pierscien(a), rb = pierscien(b);
-  if (ra === rb) return promienPierscienia(ra) * KROK;
-  return Math.abs(promienPierscienia(rb) - promienPierscienia(ra));
-}
+function dlugoscNici() { return komorka; }
 
-// Kierunek, w którym nić odchodzi od węzła — potrzebny, żeby strzałka
-// „w górę" znaczyła w górę ekranu, a nie „na zewnątrz sieci".
+// Kierunek, w którym nić odchodzi od węzła — na siatce to zawsze
+// dokładnie jeden z czterech jednostkowych wektorów, bez przybliżeń.
 function zwrotNici(a, b) {
-  const p = naNici(a, b, 0), q = naNici(a, b, 0.06);
-  const dx = q.x - p.x, dy = q.y - p.y;
-  const d = Math.hypot(dx, dy) || 1;
-  return { x: dx / d, y: dy / d };
+  return { x: kolumna(b) - kolumna(a), y: wiersz(b) - wiersz(a) };
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  Stan gry
 // ══════════════════════════════════════════════════════════════════
-const START = wezel(R - 1, 3);   // dół zewnętrznej obręczy
-const KATY = { gora: [0, -1], dol: [0, 1], lewo: [-1, 0], prawo: [1, 0] };
+const START = wezel(ROWS - 1, (COLS - 1) / 2);   // dół planszy, na środku
 const IMIONA = ["Cień", "Zasadzka", "Lustro", "Włóczęga"];
-const ROGI = [wezel(R - 1, 0), wezel(R - 1, 3), wezel(R - 1, 6), wezel(R - 1, 9)];
+const ROGI = [wezel(0, 0), wezel(0, COLS - 1), wezel(ROWS - 1, 0), wezel(ROWS - 1, COLS - 1)];
 const FAZY = [7, 20, 7, 20, 5, 20, 5, Infinity];
 
 let siec, muchy, rosa, doZjedzenia;
@@ -574,10 +566,11 @@ function nowaSiec() {
   siec = utkajSiec(poziom * 7919 + 13);
   muchy = new Set();
   rosa = new Set();
-  for (let i = 1; i < LICZBA; i++) muchy.add(i);
+  for (let i = 0; i < LICZBA; i++) if (i !== HUB) muchy.add(i);
   for (const [a, b] of siec.krawedzie) if (a !== HUB && b !== HUB) muchy.add(klucz(a, b));
-  for (const s of [2, 4, 8, 10]) {
-    const id = wezel(R - 2, s);
+  // Krople rosy blisko czterech rogów — jak power-pellety w pierwowzorze.
+  for (const [r, c] of [[1, 1], [1, COLS - 2], [ROWS - 2, 1], [ROWS - 2, COLS - 2]]) {
+    const id = wezel(r, c);
     muchy.delete(id);
     rosa.add(id);
   }
@@ -587,12 +580,14 @@ function nowaSiec() {
 }
 
 function ustawPostacie() {
-  const pierwszy = siec.sasiedzi[START].find((n) => pierscien(n) === R - 1) ?? siec.sasiedzi[START][0];
+  const startKier = Object.keys(KATY).find((k) => sasiadNici(START, k) !== null) ?? "gora";
+  const pierwszy = sasiadNici(START, startKier);
   pajak = {
-    od: START, do: pierwszy, t: 0, len: dlugoscNici(START, pierwszy),
-    chce: null, chceCzas: 0, kurs: zwrotNici(START, pierwszy), krok: 0,
+    od: START, do: pierwszy, t: 0, len: dlugoscNici(),
+    kierunek: { x: KATY[startKier][0], y: KATY[startKier][1] }, kierunekNazwa: startKier,
+    chce: null, krok: 0, zatrzymany: false,
   };
-  const ile = Math.min(IMIONA.length, poziom + 1);   // 1. sieć: dwie osy, potem coraz więcej
+  const ile = Math.min(IMIONA.length, poziom + 1);   // 1. plansza: dwie osy, potem coraz więcej
   osy = IMIONA.slice(0, ile).map((imie, i) => ({
     imie, nr: i, od: HUB, do: HUB, t: 0, len: 1,
     stan: "gniazdo", czekaj: [1.5, 5, 8, 11][i], skrzydla: Math.random() * 6,
@@ -600,39 +595,30 @@ function ustawPostacie() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Ruch
+//  Ruch — dokładne dopasowanie kierunku, bez przybliżeń kątowych.
+//  Pająk buforuje wskazany kierunek (jak w oryginalnym Pac-Manie):
+//  jeśli w danym węźle nić w tę stronę jeszcze nie istnieje, gra
+//  próbuje ponownie w każdym kolejnym węźle, aż się uda.
 // ══════════════════════════════════════════════════════════════════
-function wybierzZKierunku(w, przyszly, wektor, prog) {
-  // Przy 12 szprychach co 30° tylko cztery są idealnie pionowe/poziome — reszta
-  // jest ukośna. Próg musi być niski, żeby wskazany kierunek złapał się od razu
-  // na najlepszej dostępnej nici, zamiast czekać na idealne dopasowanie.
-  let naj = null, najlepszy = prog === undefined ? -0.15 : prog;
-  for (const n of siec.sasiedzi[w]) {
-    if (n === przyszly) continue;
-    const z = zwrotNici(w, n);
-    const skala = z.x * wektor[0] + z.y * wektor[1];
-    if (skala > najlepszy) { najlepszy = skala; naj = n; }
-  }
-  return naj;
-}
-
 function pajakWWezle() {
   const w = pajak.do;
   if (pajak.chce) {
-    const cel = wybierzZKierunku(w, null, KATY[pajak.chce]);
+    const cel = sasiadNici(w, pajak.chce);
     if (cel !== null) { ruszPajaka(w, cel); pajak.chce = null; return; }
   }
-  // Pająk nigdy nie staje — stawanie przed ostrym skrętem było najbardziej
-  // mylącą częścią sterowania. Bez wskazania idzie nicią najbliższą kursowi
-  // (próg -1 znaczy: którakolwiek, byle nie zawracać), a w ślepym końcu zawraca.
-  const dalej = wybierzZKierunku(w, pajak.od, [pajak.kurs.x, pajak.kurs.y], -1);
-  ruszPajaka(w, dalej !== null ? dalej : pajak.od);
+  const prosto = sasiadNici(w, pajak.kierunekNazwa);
+  if (prosto !== null) { ruszPajaka(w, prosto); return; }
+  // Korytarz skręca, a gracz nie wskazał w którą stronę — pająk czeka na rozstaju,
+  // dokładnie jak Pac-Man przy ścianie.
+  pajak.zatrzymany = true;
+  pajak.od = w; pajak.do = w; pajak.t = 0;
 }
 
 function ruszPajaka(od, doW) {
-  pajak.od = od; pajak.do = doW; pajak.t = 0;
-  pajak.len = dlugoscNici(od, doW);
-  pajak.kurs = zwrotNici(od, doW);
+  pajak.od = od; pajak.do = doW; pajak.t = 0; pajak.len = dlugoscNici();
+  pajak.kierunekNazwa = kierunekMiedzy(od, doW);
+  pajak.kierunek = { x: KATY[pajak.kierunekNazwa][0], y: KATY[pajak.kierunekNazwa][1] };
+  pajak.zatrzymany = false;
 }
 
 function celOsy(o) {
@@ -641,15 +627,15 @@ function celOsy(o) {
   const p = pajak.do;
   if (o.nr === 0) return p;
   if (o.nr === 1) {          // zachodzi drogę: cztery węzły przed pająkiem
-    let w = p, poprz = pajak.od, kurs = pajak.kurs;
+    let w = p, kier = pajak.kierunekNazwa;
     for (let i = 0; i < 4; i++) {
-      const n = wybierzZKierunku(w, poprz, [kurs.x, kurs.y]);
+      const n = sasiadNici(w, kier);
       if (n === null) break;
-      kurs = zwrotNici(w, n); poprz = w; w = n;
+      w = n;
     }
     return w;
   }
-  if (o.nr === 2) return lustro(p);   // zachodzi z drugiej strony sieci
+  if (o.nr === 2) return lustro(p);   // zachodzi z drugiej strony planszy
   const d = odleglosci(siec.sasiedzi, p)[o.do];
   return d > 6 ? p : ROGI[3];
 }
@@ -669,10 +655,12 @@ function osaWWezle(o) {
   o.od = o.do; o.do = cel; o.t = 0; o.len = dlugoscNici(o.od, cel);
 }
 
+// Prędkości liczone w komórkach na sekundę — nie zależą od wielkości płótna,
+// tylko od gęstości planszy, więc tempo gry zostaje takie samo, gdyby COLS/ROWS się zmieniły.
 function predkoscOsy(o) {
-  const baza = bok * (0.132 + Math.min(poziom - 1, 6) * 0.007);
-  if (o.stan === "zjedzona") return bok * 0.42;
-  if (o.stan === "strach") return bok * 0.09;
+  const baza = komorka * (1.5 + Math.min(poziom - 1, 6) * 0.09);
+  if (o.stan === "zjedzona") return komorka * 5.0;
+  if (o.stan === "strach") return komorka * 1.0;
   return baza;
 }
 
@@ -697,7 +685,7 @@ function krok(dt) {
   zegar += dt;
   blysk += dt;
 
-  // Rozkład faz: osy raz gonią, raz rozchodzą się po rogach sieci.
+  // Rozkład faz: osy raz gonią, raz rozchodzą się po rogach planszy.
   if (strach <= 0) {
     fazaCzas += dt;
     const limit = FAZY[Math.min(fazaNr, FAZY.length - 1)];
@@ -706,19 +694,24 @@ function krok(dt) {
   rozproszenie = fazaNr % 2 === 0 && FAZY[Math.min(fazaNr, FAZY.length - 1)] !== Infinity;
 
   // — pająk —
-  const v = bok * 0.20;
-  // Zapamiętany skręt po chwili wygasa — inaczej pająk skręcałby nagle
-  // kilka nici później, długo po tym, jak dziecko o tym zapomniało.
-  if (pajak.chce && zegar - pajak.chceCzas > 2) pajak.chce = null;
-  const przed = pajak.t;
-  pajak.t += (v * dt) / pajak.len;
-  pajak.krok += v * dt * 0.06;
-  if (przed < 0.5 && pajak.t >= 0.5) zjedzNic();
-  while (pajak.t >= 1) {
-    pajak.t -= 1;
-    zjedzWezel(pajak.do);
-    pajakWWezle();
-    pajak.t = Math.min(pajak.t, 0.999);
+  const v = komorka * 2.3;
+  if (pajak.zatrzymany) {
+    if (pajak.chce) {
+      const cel = sasiadNici(pajak.do, pajak.chce);
+      if (cel !== null) { ruszPajaka(pajak.do, cel); pajak.chce = null; }
+    }
+  } else {
+    const przed = pajak.t;
+    pajak.t += (v * dt) / pajak.len;
+    pajak.krok += v * dt * 0.06;
+    if (przed < 0.5 && pajak.t >= 0.5) zjedzNic();
+    while (pajak.t >= 1) {
+      pajak.t -= 1;
+      zjedzWezel(pajak.do);
+      pajakWWezle();
+      if (pajak.zatrzymany) break;
+      pajak.t = Math.min(pajak.t, 0.999);
+    }
   }
 
   // — osy —
@@ -728,8 +721,8 @@ function krok(dt) {
       o.czekaj -= dt;
       if (o.czekaj <= 0) {
         o.stan = "goni";
-        const wyjscie = WYJSCIA[o.nr % WYJSCIA.length];
-        o.od = HUB; o.do = wezel(0, wyjscie); o.t = 0; o.len = dlugoscNici(HUB, o.do);
+        const kierWyjscia = WYJSCIA[o.nr % WYJSCIA.length];
+        o.od = HUB; o.do = sasiadGeom(HUB, kierWyjscia); o.t = 0; o.len = dlugoscNici();
       }
       continue;
     }
@@ -782,7 +775,7 @@ function zjedzWezel(w) {
 
 function sprawdzZderzenia() {
   const p = naNici(pajak.od, pajak.do, pajak.t);
-  const zasieg = bok * 0.032;
+  const zasieg = komorka * 0.5;
   for (const o of osy) {
     if (o.stan === "zjedzona" || o.stan === "gniazdo") continue;
     const q = naNici(o.od, o.do, o.t);
@@ -795,7 +788,7 @@ function sprawdzZderzenia() {
       odswiez();
     } else {
       zycia--;
-      tryb = "ginie"; przerwa = 1.5; pajak.zwiniety = 0;
+      tryb = "ginie"; przerwa = 1.5;
       pisk(220, 0.6, 0.14, "triangle");
       odswiez();
       return;
@@ -809,7 +802,7 @@ function koniec() {
     rekord = wynik;
     try { localStorage.setItem("pajak-rekord", String(rekord)); } catch (e) {}
   }
-  pokaz("Sieć opustoszała", `Zebrałeś <strong>${wynik}</strong> punktów na ${poziom}. sieci. Rekord: <strong>${rekord}</strong>.`, "Jeszcze raz");
+  pokaz("Pajęczyna opustoszała", `Zebrałeś <strong>${wynik}</strong> punktów na ${poziom}. planszy. Rekord: <strong>${rekord}</strong>.`, "Jeszcze raz");
   odswiez();
 }
 
@@ -835,8 +828,8 @@ function rysujWskaznik() {
   if (!pajak.chce || tryb !== "gra") return;
   const p = naNici(pajak.od, pajak.do, pajak.t);
   const [dx, dy] = KATY[pajak.chce];
-  const odsuw = bok * 0.05;
-  const grot = bok * 0.015;
+  const odsuw = komorka * 0.62;
+  const grot = komorka * 0.16;
   ctx.save();
   ctx.translate(p.x + dx * odsuw, p.y + dy * odsuw);
   ctx.rotate(Math.atan2(dy, dx));
@@ -855,25 +848,20 @@ function rysujWskaznik() {
 
 function rysujSiec() {
   ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(168,196,180,0.44)";
+  ctx.lineWidth = Math.max(1, bok * 0.0026);
+  ctx.beginPath();
   for (const [a, b] of siec.krawedzie) {
-    ctx.strokeStyle = "rgba(168,196,180,0.44)";
-    ctx.lineWidth = Math.max(1, bok * 0.0026);
-    ctx.beginPath();
-    if (a !== HUB && b !== HUB && pierscien(a) === pierscien(b)) {
-      const sa = szprycha(a), sb = szprycha(b);
-      const zwrot = (sb - sa + S) % S === 1 ? 1 : -1;
-      const kat = sa * KROK;
-      ctx.arc(sx, sy, promienPierscienia(pierscien(a)), kat, kat + zwrot * KROK, zwrot < 0);
-    } else {
-      const p = pozycja(a), q = pozycja(b);
-      ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
-    }
-    ctx.stroke();
+    const p = pozycja(a), q = pozycja(b);
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(q.x, q.y);
   }
+  ctx.stroke();
   // Gniazdo os — jaśniejszy splot w środku.
+  const hub = pozycja(HUB);
   ctx.fillStyle = "rgba(244,197,66,0.10)";
   ctx.beginPath();
-  ctx.arc(sx, sy, promienMax * 0.085, 0, Math.PI * 2);
+  ctx.arc(hub.x, hub.y, komorka * 0.85, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "rgba(244,197,66,0.35)";
   ctx.lineWidth = Math.max(1, bok * 0.002);
@@ -881,7 +869,7 @@ function rysujSiec() {
 }
 
 function rysujJedzenie() {
-  const r = bok * 0.0085;
+  const r = komorka * 0.12;
   ctx.fillStyle = "rgba(206,218,199,0.9)";
   for (const m of muchy) {
     let p;
@@ -894,7 +882,7 @@ function rysujJedzenie() {
   const puls = 0.7 + 0.3 * Math.sin(blysk * 4);
   for (const d of rosa) {
     const p = pozycja(d);
-    const rr = bok * 0.021 * puls;
+    const rr = komorka * 0.3 * puls;
     const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.4);
     g.addColorStop(0, "rgba(127,227,208,0.95)");
     g.addColorStop(1, "rgba(127,227,208,0)");
@@ -907,8 +895,8 @@ function rysujJedzenie() {
 
 function rysujPajaka() {
   const p = naNici(pajak.od, pajak.do, pajak.t);
-  const a = Math.atan2(pajak.kurs.y, pajak.kurs.x);
-  const r = bok * 0.025;
+  const a = Math.atan2(pajak.kierunek.y, pajak.kierunek.x);
+  const r = komorka * 0.34;
   const zwija = tryb === "ginie" ? Math.min(1, (1.5 - Math.max(0, przerwa)) / 1.5) : 0;
 
   ctx.save();
@@ -963,7 +951,7 @@ function rysujOse(o) {
   const p = naNici(o.od, o.do, o.t);
   const q = naNici(o.od, o.do, Math.min(1, o.t + 0.05));
   const a = Math.atan2(q.y - p.y, q.x - p.x);
-  const r = bok * 0.022;
+  const r = komorka * 0.3;
   const konczy = strach > 0 && strach < 2 && Math.floor(strach * 6) % 2 === 0;
 
   ctx.save();
@@ -1078,13 +1066,19 @@ addEventListener("keydown", (e) => {
 function steruj(kier) {
   if (tryb !== "gra") return;
   pajak.chce = kier;
-  pajak.chceCzas = zegar;
+  if (pajak.zatrzymany) {
+    // Stał na rozstaju czekając na wskazanie — reaguje natychmiast, bez czekania na klatkę.
+    const cel = sasiadNici(pajak.do, kier);
+    if (cel !== null) { ruszPajaka(pajak.do, cel); pajak.chce = null; }
+    return;
+  }
   // Zawracanie w pół nici jest natychmiastowe — jak w pierwowzorze.
-  const przodem = pajak.kurs.x * KATY[kier][0] + pajak.kurs.y * KATY[kier][1];
-  if (przodem < -0.4) {
+  const przodem = pajak.kierunek.x * KATY[kier][0] + pajak.kierunek.y * KATY[kier][1];
+  if (przodem < -0.5) {
     [pajak.od, pajak.do] = [pajak.do, pajak.od];
     pajak.t = 1 - pajak.t;
-    pajak.kurs = zwrotNici(pajak.od, pajak.do);
+    pajak.kierunekNazwa = kier;
+    pajak.kierunek = { x: KATY[kier][0], y: KATY[kier][1] };
     pajak.chce = null;
   }
 }
@@ -1093,7 +1087,7 @@ for (const b of document.querySelectorAll(".krzyzak button")) {
   b.addEventListener("pointerdown", (e) => { e.preventDefault(); odblokujDzwiek(); steruj(b.dataset.kier); });
 }
 
-// przesunięcie palcem po sieci
+// przesunięcie palcem po planszy
 let dotyk = null;
 plotno.addEventListener("pointerdown", (e) => { dotyk = { x: e.clientX, y: e.clientY }; odblokujDzwiek(); });
 plotno.addEventListener("pointerup", (e) => {
@@ -1251,7 +1245,10 @@ function klatka(teraz) {
 if (location.hash === "#test") {
   window.pajakTest = () => {
     const p = naNici(pajak.od, pajak.do, pajak.t);
-    return { x: p.x, y: p.y, kurs: pajak.kurs, chce: pajak.chce, tryb, zostalo: doZjedzenia };
+    return {
+      x: p.x, y: p.y, kierunek: pajak.kierunek, kierunekNazwa: pajak.kierunekNazwa,
+      chce: pajak.chce, zatrzymany: pajak.zatrzymany, tryb, zostalo: doZjedzenia,
+    };
   };
 }
 
