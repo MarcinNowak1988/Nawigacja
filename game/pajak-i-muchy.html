@@ -175,6 +175,50 @@ button:hover{transform:translateY(-1px);box-shadow:0 8px 24px -10px var(--rosa)}
 button:active{transform:translateY(0)}
 button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 
+/* ——— quiz przed grą ——— */
+.zaslona .quiz-krok{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--tekst-cichy);
+}
+.postep{display:flex;gap:8px}
+.postep i{width:9px;height:9px;border-radius:999px;background:var(--jedwab-cichy);display:block;transition:transform .2s ease}
+.postep i.zrobione{background:var(--rosa)}
+.postep i.teraz{background:var(--bursztyn);transform:scale(1.4)}
+.zaslona .zadanie{
+  font-family:"Fraunces",Georgia,serif;
+  font-weight:900;
+  font-size:clamp(38px,10vw,68px);
+  line-height:1;
+  color:var(--tekst);
+  font-variant-numeric:tabular-nums;
+  max-width:none;
+  text-wrap:balance;
+}
+.odpowiedzi{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(104px,148px));
+  gap:12px;
+}
+.odpowiedzi button{
+  font-family:"IBM Plex Mono",monospace;
+  font-weight:600;
+  font-size:clamp(22px,5.4vw,30px);
+  font-variant-numeric:tabular-nums;
+  color:var(--tekst);
+  background:var(--mech-jasny);
+  border:1px solid var(--jedwab-cichy);
+  border-radius:14px;
+  padding:16px 10px;
+  box-shadow:none;
+}
+.odpowiedzi button:hover{background:#1F3129;color:var(--rosa);transform:none;box-shadow:none}
+.odpowiedzi button.dobrze{background:var(--rosa);color:var(--noc);border-color:var(--rosa)}
+.odpowiedzi button.zle{background:transparent;color:var(--alarm);border-color:var(--alarm);opacity:.45}
+.zaslona .quiz-info{color:var(--tekst-cichy);min-height:1.4em}
+
 /* ——— stopka: sterowanie ——— */
 .spod{
   width:min(760px,100%);
@@ -238,13 +282,14 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 }
 @media (prefers-reduced-motion:reduce){
   button{transition:none}
+  .postep i{transition:none}
 }
 </style>
 </head>
 <body>
 <header class="szczyt">
   <h1>Pająk i Muchy</h1>
-  <p class="podtytul">Nocna sieć · 16 szprych</p>
+  <p class="podtytul">Nocna sieć · 12 szprych</p>
 </header>
 
 <section class="stan" aria-label="Stan gry">
@@ -258,8 +303,16 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
   <canvas id="plotno"></canvas>
   <div class="zaslona widoczna" id="zaslona">
     <h2 id="zaslona-tytul">Zapolujmy</h2>
-    <p id="zaslona-tresc">Chodzisz po pajęczynie i zjadasz muchy. Cztery <strong>osy</strong> chodzą po tej samej sieci — dotknięcie kosztuje życie. Zjedz <strong>kroplę rosy</strong>, a przez chwilę to ty polujesz na nie.</p>
-    <button id="zaslona-przycisk" type="button">Start</button>
+    <p id="zaslona-tresc">Chodzisz pająkiem po pajęczynie i zjadasz muchy. <strong>Osy</strong> chodzą po tej samej sieci — dotknięcie kosztuje życie. Zjedz <strong>kroplę rosy</strong>, a przez chwilę to ty polujesz na nie. Najpierw <strong>pięć zadań z matematyki</strong>.</p>
+    <button id="zaslona-przycisk" type="button">Zaczynamy</button>
+  </div>
+
+  <div class="zaslona quiz" id="quiz">
+    <p class="quiz-krok">Zadanie <span id="quiz-nr">1</span> z 5</p>
+    <div class="postep" id="quiz-postep"></div>
+    <p class="zadanie" id="quiz-zadanie">7 + 5</p>
+    <div class="odpowiedzi" id="quiz-odpowiedzi"></div>
+    <p class="quiz-info" id="quiz-info" role="status">Ile to jest?</p>
   </div>
 </div>
 
@@ -286,11 +339,11 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 //  Sieć: graf biegunowy — HUB w środku, R pierścieni po S szprych.
 //  Węzeł (r,s) ma numer 1 + r*S + s; HUB to 0.
 // ══════════════════════════════════════════════════════════════════
-const S = 16;            // szprychy
-const R = 7;             // pierścienie
+const S = 12;            // szprychy — co 30°, więc strzałki trafiają dokładnie w nić
+const R = 5;             // pierścienie
 const HUB = 0;
 const LICZBA = 1 + R * S;
-const WYJSCIA = [0, 4, 8, 12];   // szprychy wychodzące z gniazda os
+const WYJSCIA = [0, 3, 6, 9];    // szprychy wychodzące z gniazda os
 const KROK = (Math.PI * 2) / S;
 
 const wezel = (r, s) => 1 + r * S + ((s % S) + S) % S;
@@ -298,7 +351,7 @@ const pierscien = (id) => Math.floor((id - 1) / S);
 const szprycha = (id) => (id - 1) % S;
 const klucz = (a, b) => (a < b ? a + "_" + b : b + "_" + a);
 // Odbicie względem osi pionowej — dzięki niemu sieć jest symetryczna.
-const lustro = (id) => (id === HUB ? HUB : wezel(pierscien(id), 8 - szprycha(id)));
+const lustro = (id) => (id === HUB ? HUB : wezel(pierscien(id), S / 2 - szprycha(id)));
 
 function losowacz(ziarno) {
   let a = ziarno >>> 0;
@@ -378,6 +431,25 @@ function utkajSiec(ziarno) {
     }
   }
 
+  // Każdy węzeł musi mieć nić prowadzącą do środka albo na zewnątrz.
+  // Bez tego w wielu miejscach żadna nić nie szła „w górę ekranu" i strzałka
+  // trafiała w pustkę — to właśnie sprawiało wrażenie zepsutego sterowania.
+  // Z promieniem w każdym węźle wszystkie cztery strzałki mają w co trafić:
+  // promień daje kierunek do środka i na zewnątrz, a łuki — dwie strony wokół.
+  const promieniste = new Set();
+  for (const [a, b] of wybrane.values())
+    if (a === HUB || b === HUB || pierscien(a) !== pierscien(b)) { promieniste.add(a); promieniste.add(b); }
+  for (let r = 0; r < R; r++)
+    for (let s = 0; s < S; s++) {
+      const id = wezel(r, s);
+      if (promieniste.has(id)) continue;
+      const cel = r > 0 ? wezel(r - 1, s) : wezel(1, s);
+      for (const kr of [[id, cel], [lustro(id), lustro(cel)]]) {
+        dodaj(kr);
+        promieniste.add(kr[0]); promieniste.add(kr[1]);
+      }
+    }
+
   const sasiedzi = Array.from({ length: LICZBA }, () => []);
   for (const [a, b] of wybrane.values()) { sasiedzi[a].push(b); sasiedzi[b].push(a); }
   return { sasiedzi, krawedzie: [...wybrane.values()] };
@@ -419,7 +491,7 @@ function zmierz() {
 }
 new ResizeObserver(zmierz).observe(plotno);
 
-const promienPierscienia = (r) => promienMax * (0.19 + 0.81 * (r / (R - 1)));
+const promienPierscienia = (r) => promienMax * (0.24 + 0.76 * (r / (R - 1)));
 
 function pozycja(id) {
   if (id === HUB) return { x: sx, y: sy };
@@ -468,10 +540,10 @@ function zwrotNici(a, b) {
 // ══════════════════════════════════════════════════════════════════
 //  Stan gry
 // ══════════════════════════════════════════════════════════════════
-const START = wezel(R - 1, 4);   // dół zewnętrznej obręczy
+const START = wezel(R - 1, 3);   // dół zewnętrznej obręczy
 const KATY = { gora: [0, -1], dol: [0, 1], lewo: [-1, 0], prawo: [1, 0] };
 const IMIONA = ["Cień", "Zasadzka", "Lustro", "Włóczęga"];
-const ROGI = [wezel(R - 1, 0), wezel(R - 1, 4), wezel(R - 1, 8), wezel(R - 1, 12)];
+const ROGI = [wezel(R - 1, 0), wezel(R - 1, 3), wezel(R - 1, 6), wezel(R - 1, 9)];
 const FAZY = [7, 20, 7, 20, 5, 20, 5, Infinity];
 
 let siec, muchy, rosa, doZjedzenia;
@@ -504,7 +576,7 @@ function nowaSiec() {
   rosa = new Set();
   for (let i = 1; i < LICZBA; i++) muchy.add(i);
   for (const [a, b] of siec.krawedzie) if (a !== HUB && b !== HUB) muchy.add(klucz(a, b));
-  for (const s of [2, 6, 10, 14]) {
+  for (const s of [2, 4, 8, 10]) {
     const id = wezel(R - 2, s);
     muchy.delete(id);
     rosa.add(id);
@@ -518,19 +590,23 @@ function ustawPostacie() {
   const pierwszy = siec.sasiedzi[START].find((n) => pierscien(n) === R - 1) ?? siec.sasiedzi[START][0];
   pajak = {
     od: START, do: pierwszy, t: 0, len: dlugoscNici(START, pierwszy),
-    chce: null, kurs: zwrotNici(START, pierwszy), krok: 0, stoi: false,
+    chce: null, chceCzas: 0, kurs: zwrotNici(START, pierwszy), krok: 0,
   };
-  osy = IMIONA.map((imie, i) => ({
+  const ile = Math.min(IMIONA.length, poziom + 1);   // 1. sieć: dwie osy, potem coraz więcej
+  osy = IMIONA.slice(0, ile).map((imie, i) => ({
     imie, nr: i, od: HUB, do: HUB, t: 0, len: 1,
-    stan: "gniazdo", czekaj: [0, 2.4, 5.2, 8.4][i], skrzydla: Math.random() * 6,
+    stan: "gniazdo", czekaj: [1.5, 5, 8, 11][i], skrzydla: Math.random() * 6,
   }));
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  Ruch
 // ══════════════════════════════════════════════════════════════════
-function wybierzZKierunku(w, przyszly, wektor) {
-  let naj = null, najlepszy = 0.3;
+function wybierzZKierunku(w, przyszly, wektor, prog) {
+  // Przy 12 szprychach co 30° tylko cztery są idealnie pionowe/poziome — reszta
+  // jest ukośna. Próg musi być niski, żeby wskazany kierunek złapał się od razu
+  // na najlepszej dostępnej nici, zamiast czekać na idealne dopasowanie.
+  let naj = null, najlepszy = prog === undefined ? -0.15 : prog;
   for (const n of siec.sasiedzi[w]) {
     if (n === przyszly) continue;
     const z = zwrotNici(w, n);
@@ -546,14 +622,11 @@ function pajakWWezle() {
     const cel = wybierzZKierunku(w, null, KATY[pajak.chce]);
     if (cel !== null) { ruszPajaka(w, cel); pajak.chce = null; return; }
   }
-  // Bez skrętu pająk idzie dalej „prosto" — nicią najbliższą dotychczasowemu kursowi.
-  const dalej = wybierzZKierunku(w, pajak.od, [pajak.kurs.x, pajak.kurs.y]);
-  if (dalej !== null) { ruszPajaka(w, dalej); return; }
-  // Nić skręca ostro — jeśli wyjście jest tylko jedno, pająk idzie za nią,
-  // bo to wciąż ten sam korytarz. Na rozstaju bez wskazania staje.
-  const wyjscia = siec.sasiedzi[w].filter((n) => n !== pajak.od);
-  if (wyjscia.length === 1) ruszPajaka(w, wyjscia[0]);
-  else pajak.stoi = true;
+  // Pająk nigdy nie staje — stawanie przed ostrym skrętem było najbardziej
+  // mylącą częścią sterowania. Bez wskazania idzie nicią najbliższą kursowi
+  // (próg -1 znaczy: którakolwiek, byle nie zawracać), a w ślepym końcu zawraca.
+  const dalej = wybierzZKierunku(w, pajak.od, [pajak.kurs.x, pajak.kurs.y], -1);
+  ruszPajaka(w, dalej !== null ? dalej : pajak.od);
 }
 
 function ruszPajaka(od, doW) {
@@ -597,9 +670,9 @@ function osaWWezle(o) {
 }
 
 function predkoscOsy(o) {
-  const baza = bok * (0.168 + Math.min(poziom - 1, 6) * 0.008);
-  if (o.stan === "zjedzona") return bok * 0.46;
-  if (o.stan === "strach") return bok * 0.105;
+  const baza = bok * (0.132 + Math.min(poziom - 1, 6) * 0.007);
+  if (o.stan === "zjedzona") return bok * 0.42;
+  if (o.stan === "strach") return bok * 0.09;
   return baza;
 }
 
@@ -633,24 +706,19 @@ function krok(dt) {
   rozproszenie = fazaNr % 2 === 0 && FAZY[Math.min(fazaNr, FAZY.length - 1)] !== Infinity;
 
   // — pająk —
-  const v = bok * 0.225;
-  if (pajak.stoi) {
-    if (pajak.chce) {
-      const cel = wybierzZKierunku(pajak.do, null, KATY[pajak.chce]);
-      if (cel !== null) { ruszPajaka(pajak.do, cel); pajak.stoi = false; pajak.chce = null; }
-    }
-  } else {
-    const przed = pajak.t;
-    pajak.t += (v * dt) / pajak.len;
-    pajak.krok += v * dt * 0.06;
-    if (przed < 0.5 && pajak.t >= 0.5) zjedzNic();
-    while (pajak.t >= 1) {
-      pajak.t -= 1;
-      zjedzWezel(pajak.do);
-      pajakWWezle();
-      if (pajak.stoi) { pajak.t = 1; break; }
-      pajak.t = Math.min(pajak.t, 0.999);
-    }
+  const v = bok * 0.20;
+  // Zapamiętany skręt po chwili wygasa — inaczej pająk skręcałby nagle
+  // kilka nici później, długo po tym, jak dziecko o tym zapomniało.
+  if (pajak.chce && zegar - pajak.chceCzas > 2) pajak.chce = null;
+  const przed = pajak.t;
+  pajak.t += (v * dt) / pajak.len;
+  pajak.krok += v * dt * 0.06;
+  if (przed < 0.5 && pajak.t >= 0.5) zjedzNic();
+  while (pajak.t >= 1) {
+    pajak.t -= 1;
+    zjedzWezel(pajak.do);
+    pajakWWezle();
+    pajak.t = Math.min(pajak.t, 0.999);
   }
 
   // — osy —
@@ -702,7 +770,7 @@ function zjedzNic() {
 function zjedzWezel(w) {
   if (muchy.delete(w)) { wynik += 10; doZjedzenia--; pisk(720, 0.035, 0.05); odswiez(); }
   else if (rosa.delete(w)) {
-    wynik += 50; doZjedzenia--; strach = Math.max(4, 8 - poziom * 0.5); mnoznik = 1;
+    wynik += 50; doZjedzenia--; strach = Math.max(5, 9 - poziom * 0.5); mnoznik = 1;
     for (const o of osy) if (o.stan === "goni") {
       o.stan = "strach";
       [o.od, o.do] = [o.do, o.od]; o.t = 1 - o.t;
@@ -714,7 +782,7 @@ function zjedzWezel(w) {
 
 function sprawdzZderzenia() {
   const p = naNici(pajak.od, pajak.do, pajak.t);
-  const zasieg = bok * 0.026;
+  const zasieg = bok * 0.032;
   for (const o of osy) {
     if (o.stan === "zjedzona" || o.stan === "gniazdo") continue;
     const q = naNici(o.od, o.do, o.t);
@@ -759,6 +827,30 @@ function rysuj() {
   rysujJedzenie();
   for (const o of osy) if (o.stan !== "gniazdo" || tryb === "gra") rysujOse(o);
   if (tryb !== "koniec") rysujPajaka();
+  rysujWskaznik();
+}
+
+// Zapamiętany skręt widać przy pająku — dziecko ma wiedzieć, że gra usłyszała klawisz.
+function rysujWskaznik() {
+  if (!pajak.chce || tryb !== "gra") return;
+  const p = naNici(pajak.od, pajak.do, pajak.t);
+  const [dx, dy] = KATY[pajak.chce];
+  const odsuw = bok * 0.05;
+  const grot = bok * 0.015;
+  ctx.save();
+  ctx.translate(p.x + dx * odsuw, p.y + dy * odsuw);
+  ctx.rotate(Math.atan2(dy, dx));
+  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(blysk * 9);
+  ctx.strokeStyle = "#7FE3D0";
+  ctx.lineWidth = Math.max(2, bok * 0.005);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(-grot, -grot);
+  ctx.lineTo(grot * 0.5, 0);
+  ctx.lineTo(-grot, grot);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function rysujSiec() {
@@ -789,8 +881,8 @@ function rysujSiec() {
 }
 
 function rysujJedzenie() {
-  const r = bok * 0.0062;
-  ctx.fillStyle = "rgba(206,218,199,0.85)";
+  const r = bok * 0.0085;
+  ctx.fillStyle = "rgba(206,218,199,0.9)";
   for (const m of muchy) {
     let p;
     if (typeof m === "number") p = pozycja(m);
@@ -802,7 +894,7 @@ function rysujJedzenie() {
   const puls = 0.7 + 0.3 * Math.sin(blysk * 4);
   for (const d of rosa) {
     const p = pozycja(d);
-    const rr = bok * 0.017 * puls;
+    const rr = bok * 0.021 * puls;
     const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.4);
     g.addColorStop(0, "rgba(127,227,208,0.95)");
     g.addColorStop(1, "rgba(127,227,208,0)");
@@ -816,7 +908,7 @@ function rysujJedzenie() {
 function rysujPajaka() {
   const p = naNici(pajak.od, pajak.do, pajak.t);
   const a = Math.atan2(pajak.kurs.y, pajak.kurs.x);
-  const r = bok * 0.0195;
+  const r = bok * 0.025;
   const zwija = tryb === "ginie" ? Math.min(1, (1.5 - Math.max(0, przerwa)) / 1.5) : 0;
 
   ctx.save();
@@ -871,7 +963,7 @@ function rysujOse(o) {
   const p = naNici(o.od, o.do, o.t);
   const q = naNici(o.od, o.do, Math.min(1, o.t + 0.05));
   const a = Math.atan2(q.y - p.y, q.x - p.x);
-  const r = bok * 0.017;
+  const r = bok * 0.022;
   const konczy = strach > 0 && strach < 2 && Math.floor(strach * 6) % 2 === 0;
 
   ctx.save();
@@ -955,10 +1047,9 @@ const schowaj = () => el.zaslona.classList.remove("widoczna");
 
 el.przycisk.addEventListener("click", () => {
   odblokujDzwiek();
-  if (tryb === "koniec" || tryb === "start") nowaGra();
-  tryb = "gra"; zegar = 0; przerwa = 0;
-  schowaj(); odswiez();
   el.przycisk.blur();   // żeby Spacja/Enter nie wracały do przycisku zamiast do gry
+  if (tryb === "pauza") { tryb = "gra"; schowaj(); return; }
+  zacznijQuiz();        // każde nowe podejście zaczyna się od zadań
 });
 
 function pauza() {
@@ -974,6 +1065,11 @@ const KLAWISZE = {
   W: "gora", S: "dol", A: "lewo", D: "prawo",
 };
 addEventListener("keydown", (e) => {
+  if (tryb === "quiz") {
+    const i = "1234".indexOf(e.key);
+    if (i >= 0) { e.preventDefault(); elQ.odpowiedzi.children[i]?.click(); }
+    return;
+  }
   const k = KLAWISZE[e.key];
   if (k) { e.preventDefault(); steruj(k); return; }
   if (e.key === " " || e.key === "p" || e.key === "P") { e.preventDefault(); pauza(); }
@@ -982,9 +1078,10 @@ addEventListener("keydown", (e) => {
 function steruj(kier) {
   if (tryb !== "gra") return;
   pajak.chce = kier;
+  pajak.chceCzas = zegar;
   // Zawracanie w pół nici jest natychmiastowe — jak w pierwowzorze.
   const przodem = pajak.kurs.x * KATY[kier][0] + pajak.kurs.y * KATY[kier][1];
-  if (!pajak.stoi && przodem < -0.4) {
+  if (przodem < -0.4) {
     [pajak.od, pajak.do] = [pajak.do, pajak.od];
     pajak.t = 1 - pajak.t;
     pajak.kurs = zwrotNici(pajak.od, pajak.do);
@@ -1029,6 +1126,116 @@ function pisk(hz, dlugosc, glosnosc, ksztalt) {
   o.start(); o.stop(audio.currentTime + dlugosc);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  Quiz matematyczny — wejściówka do gry, poziom 7–8 lat
+//  (dodawanie i odejmowanie do 20, brakujący składnik, tabliczka 2/3/5, połowa).
+// ══════════════════════════════════════════════════════════════════
+const elQ = {
+  box: document.getElementById("quiz"),
+  nr: document.getElementById("quiz-nr"),
+  postep: document.getElementById("quiz-postep"),
+  zadanie: document.getElementById("quiz-zadanie"),
+  odpowiedzi: document.getElementById("quiz-odpowiedzi"),
+  info: document.getElementById("quiz-info"),
+};
+const PYTAN = 5;
+let quiz = { lista: [], nr: 0, bonus: 0, bezbledne: 0, pierwsza: true, blokada: false };
+
+const los = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+function ulozZadanie() {
+  let tresc, ile;
+  switch (los(1, 5)) {
+    case 1: { const a = los(2, 12), b = los(2, 20 - a); tresc = `${a} + ${b}`; ile = a + b; break; }
+    case 2: { const a = los(8, 20), b = los(2, a - 2); tresc = `${a} − ${b}`; ile = a - b; break; }
+    case 3: { const c = los(10, 20), a = los(2, c - 2); tresc = `${a} + ? = ${c}`; ile = c - a; break; }
+    case 4: { const a = [2, 3, 5][los(0, 2)], b = los(2, 6); tresc = `${a} × ${b}`; ile = a * b; break; }
+    default: { const b = los(3, 9); tresc = `połowa z ${2 * b}`; ile = b; }
+  }
+  // Odpowiedzi błędne trzymamy blisko dobrej — zgadywanie „na oko" ma nie działać.
+  const opcje = [ile];
+  while (opcje.length < 4) {
+    const d = ile + los(-4, 4);
+    if (d > 0 && !opcje.includes(d)) opcje.push(d);
+  }
+  for (let i = opcje.length - 1; i > 0; i--) { const j = los(0, i); [opcje[i], opcje[j]] = [opcje[j], opcje[i]]; }
+  return { tresc, ile, opcje };
+}
+
+function zacznijQuiz() {
+  const lista = [];
+  while (lista.length < PYTAN) {
+    const z = ulozZadanie();
+    if (!lista.some((x) => x.tresc === z.tresc)) lista.push(z);
+  }
+  quiz = { lista, nr: 0, bonus: 0, bezbledne: 0, pierwsza: true, blokada: false };
+  tryb = "quiz";
+  schowaj();
+  elQ.box.classList.add("widoczna");
+  pokazZadanie();
+}
+
+function pokazZadanie() {
+  const z = quiz.lista[quiz.nr];
+  quiz.pierwsza = true;
+  elQ.nr.textContent = quiz.nr + 1;
+  elQ.zadanie.textContent = z.tresc;
+  elQ.info.textContent = "Ile to jest?";
+  elQ.postep.innerHTML = "";
+  for (let i = 0; i < PYTAN; i++) {
+    const k = document.createElement("i");
+    if (i < quiz.nr) k.className = "zrobione";
+    else if (i === quiz.nr) k.className = "teraz";
+    elQ.postep.appendChild(k);
+  }
+  elQ.odpowiedzi.innerHTML = "";
+  for (const v of z.opcje) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = v;
+    b.addEventListener("click", () => odpowiedz(b, v));
+    elQ.odpowiedzi.appendChild(b);
+  }
+}
+
+function odpowiedz(b, v) {
+  if (quiz.blokada || b.disabled) return;
+  const z = quiz.lista[quiz.nr];
+  if (v !== z.ile) {
+    // Zła odpowiedź nie kończy zadania — dziecko próbuje aż do skutku,
+    // traci tylko punkty bonusowe za pierwsze trafienie.
+    b.classList.add("zle");
+    b.disabled = true;
+    quiz.pierwsza = false;
+    elQ.info.textContent = "Blisko! Spróbuj jeszcze raz.";
+    pisk(200, 0.18, 0.09, "triangle");
+    return;
+  }
+  b.classList.add("dobrze");
+  quiz.blokada = true;
+  if (quiz.pierwsza) { quiz.bonus += 50; quiz.bezbledne++; }
+  elQ.info.textContent = quiz.pierwsza ? "Dobrze! +50 punktów" : "Tak jest!";
+  pisk(880, 0.2, 0.09);
+  setTimeout(() => {
+    quiz.nr++;
+    if (quiz.nr < PYTAN) { quiz.blokada = false; pokazZadanie(); return; }
+    elQ.info.textContent = quiz.bezbledne === PYTAN
+      ? `Komplet! Dodatkowe życie i ${quiz.bonus} punktów na start.`
+      : `${quiz.bonus} punktów na start. Uwaga na osy!`;
+    setTimeout(koniecQuizu, 1500);
+  }, 800);
+}
+
+function koniecQuizu() {
+  elQ.box.classList.remove("widoczna");
+  nowaGra();
+  wynik = quiz.bonus;
+  if (quiz.bezbledne === PYTAN) zycia = 4;
+  quiz.blokada = false;
+  tryb = "gra"; zegar = 0; przerwa = 0;
+  odswiez();
+}
+
 // ——— pętla ———
 let ostatnia = 0;
 function klatka(teraz) {
@@ -1038,6 +1245,14 @@ function klatka(teraz) {
   if (tryb === "ginie" && przerwa > 0) blysk += dt;
   rysuj();
   requestAnimationFrame(klatka);
+}
+
+// Podgląd stanu dla testów automatycznych — tylko po dopisaniu #test do adresu.
+if (location.hash === "#test") {
+  window.pajakTest = () => {
+    const p = naNici(pajak.od, pajak.do, pajak.t);
+    return { x: p.x, y: p.y, kurs: pajak.kurs, chce: pajak.chce, tryb, zostalo: doZjedzenia };
+  };
 }
 
 zmierz();
