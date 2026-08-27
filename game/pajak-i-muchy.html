@@ -315,7 +315,7 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
 <body>
 <header class="szczyt">
   <h1>Pająk i Muchy</h1>
-  <p class="podtytul">Nocny ogród · siatka 9×9</p>
+  <p class="podtytul">Nocny ogród · wzór: <span id="wzor-nazwa">Klatka</span></p>
 </header>
 
 <section class="stan" aria-label="Stan gry">
@@ -341,12 +341,14 @@ button:focus-visible{outline:2px solid var(--bursztyn);outline-offset:3px}
     <p class="quiz-info" id="quiz-info" role="status">Ile to jest?</p>
   </div>
 
-  <div class="zaslona szachy" id="szachy">
-    <h2>Ostatnia szansa</h2>
-    <p>Białe zaczynają i dają mata w jednym ruchu. Kliknij swoją figurę, a potem pole, na które ma się ruszyć.</p>
+  <div class="zaslona szansa" id="szansa">
+    <h2 id="szansa-tytul">Ostatnia szansa</h2>
+    <p id="szansa-opis">Białe zaczynają i dają mata w jednym ruchu. Kliknij swoją figurę, a potem pole, na które ma się ruszyć.</p>
     <div class="szachownica" id="szachownica"></div>
-    <p class="quiz-info" id="szachy-info" role="status">Twój ruch.</p>
-    <button class="male" id="szachy-podpowiedz" type="button">Podpowiedź</button>
+    <p class="zadanie" id="szansa-zadanie">7 + 5</p>
+    <div class="odpowiedzi" id="szansa-odpowiedzi"></div>
+    <p class="quiz-info" id="szansa-info" role="status">Twój ruch.</p>
+    <button class="male" id="szansa-podpowiedz" type="button">Podpowiedź</button>
   </div>
 </div>
 
@@ -420,19 +422,64 @@ function losowacz(ziarno) {
   };
 }
 
-// Obwód planszy jako jedna pętla węzłów, w kolejności zgodnej z ruchem
-// wskazówek zegara — to nasz odpowiednik dawnej „zewnętrznej obręczy".
-function obwodGranicy() {
+// Węzły tworzące kwadratową obwódkę w odległości Czebyszewa `promien` od środka
+// planszy — dla promien = połowa planszy to jej zewnętrzna krawędź, dla
+// mniejszych promieni to pierścień w głębi (kolejność zgodna z ruchem
+// wskazówek zegara, więc łatwo zamienić w zamkniętą pętlę krawędzi).
+function pierscienKwadratowy(promien) {
+  const sr = Math.floor(ROWS / 2), sc = Math.floor(COLS / 2);
+  const top = sr - promien, bottom = sr + promien, left = sc - promien, right = sc + promien;
+  if (top < 0 || bottom >= ROWS || left < 0 || right >= COLS) return [];
   const lista = [];
-  for (let c = 0; c < COLS; c++) lista.push(wezel(0, c));
-  for (let r = 1; r < ROWS; r++) lista.push(wezel(r, COLS - 1));
-  for (let c = COLS - 2; c >= 0; c--) lista.push(wezel(ROWS - 1, c));
-  for (let r = ROWS - 2; r > 0; r--) lista.push(wezel(r, 0));
+  for (let c = left; c <= right; c++) lista.push(wezel(top, c));
+  for (let r = top + 1; r <= bottom; r++) lista.push(wezel(r, right));
+  for (let c = right - 1; c >= left; c--) lista.push(wezel(bottom, c));
+  for (let r = bottom - 1; r > top; r--) lista.push(wezel(r, left));
   return lista;
 }
+function petlaKrawedzi(lista) {
+  const kr = [];
+  for (let i = 0; i < lista.length; i++) kr.push([lista[i], lista[(i + 1) % lista.length]]);
+  return kr;
+}
+// Obwód planszy — to nasz odpowiednik dawnej „zewnętrznej obręczy": zawsze
+// otwarty korytarz ucieczki dookoła całej planszy.
+function obwodGranicy() {
+  return pierscienKwadratowy(Math.floor(Math.min(ROWS, COLS) / 2));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Wzory planszy — każdy poziom tka sieć na innym stałym szkielecie,
+//  żeby plansze różniły się kształtem, a nie tylko losowym wypełnieniem
+//  tego samego pustego prostokąta. Każdy wzór dorzuca własne stałe nici
+//  do wspólnego szkieletu (obwódka + promienie z gniazda), a resztę
+//  wypełnia ten sam generator co dotąd. Pierścienie i krzyż są zbudowane
+//  symetrycznie względem środkowej kolumny, więc plansza zostaje lustrzana
+//  jak przy każdym innym wzorze.
+// ══════════════════════════════════════════════════════════════════
+const WZORY = [
+  {
+    nazwa: "Klatka",
+    dodatkowe: () => [],
+  },
+  {
+    nazwa: "Pierścienie",
+    dodatkowe: () => [2, 3].flatMap((p) => petlaKrawedzi(pierscienKwadratowy(p))),
+  },
+  {
+    nazwa: "Krzyż",
+    dodatkowe: () => {
+      const kr = [];
+      const sr = Math.floor(ROWS / 2), sc = Math.floor(COLS / 2);
+      for (let c = 0; c < COLS - 1; c++) kr.push([wezel(sr, c), wezel(sr, c + 1)]);
+      for (let r = 0; r < ROWS - 1; r++) kr.push([wezel(r, sc), wezel(r + 1, sc)]);
+      return kr;
+    },
+  },
+];
 
 // --- SIEC ---
-function utkajSiec(ziarno) {
+function utkajSiec(ziarno, wzorIdx) {
   const rnd = losowacz(ziarno);
 
   const wszystkie = [];
@@ -442,12 +489,11 @@ function utkajSiec(ziarno) {
       if (r + 1 < ROWS) wszystkie.push([wezel(r, c), wezel(r + 1, c)]);
     }
 
-  // Nici, które są zawsze: promienie z gniazda i cała obwódka planszy —
-  // korytarz ucieczki dookoła, jak dawna zewnętrzna obręcz.
-  const stale = [];
-  const obwod = obwodGranicy();
-  for (let i = 0; i < obwod.length; i++) stale.push([obwod[i], obwod[(i + 1) % obwod.length]]);
+  // Nici, które są zawsze: promienie z gniazda, obwódka planszy i dodatkowy
+  // szkielet wzoru danego poziomu.
+  const stale = petlaKrawedzi(obwodGranicy());
   for (const kier in KATY) stale.push([HUB, sasiadGeom(HUB, kier)]);
+  stale.push(...WZORY[wzorIdx].dodatkowe());
 
   const rodzic = new Int16Array(LICZBA).map((_, i) => i);
   const znajdz = (x) => {
@@ -587,6 +633,7 @@ const el = {
   tresc: document.getElementById("zaslona-tresc"),
   przycisk: document.getElementById("zaslona-przycisk"),
   dzwiek: document.getElementById("dzwiek"),
+  wzor: document.getElementById("wzor-nazwa"),
 };
 
 try { rekord = parseInt(localStorage.getItem("pajak-rekord") || "0", 10) || 0; } catch (e) { rekord = 0; }
@@ -597,7 +644,9 @@ function nowaGra() {
 }
 
 function nowaSiec() {
-  siec = utkajSiec(poziom * 7919 + 13);
+  const wzorIdx = (poziom - 1) % WZORY.length;
+  siec = utkajSiec(poziom * 7919 + 13, wzorIdx);
+  el.wzor.textContent = WZORY[wzorIdx].nazwa;
   muchy = new Set();
   rosa = new Set();
   for (let i = 0; i < LICZBA; i++) if (i !== HUB) muchy.add(i);
@@ -707,7 +756,7 @@ function krok(dt) {
     if (przerwa <= 0) {
       if (tryb === "ginie") {
         if (zycia > 0) { ustawPostacie(); tryb = "gra"; }
-        else zacznijSzachy();
+        else zacznijDrugaSzanse();
       } else if (tryb === "czysta") {
         poziom++; nowaSiec(); tryb = "gra";
       }
@@ -1205,142 +1254,6 @@ function zatrzymajMuzyke() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Szachowa druga szansa — zamiast końca gry po utracie piątego życia.
-//  Pięć ręcznie sprawdzonych pozycji „białe zaczynają i dają mata w jednym
-//  ruchu": tylko król i hetman albo wieża przeciwko samotnemu królowi, żeby
-//  nie trzeba było sprawdzać ogólnych zasad szachowych — porównujemy jedynie,
-//  czy kliknięty ruch to dokładnie ten zapisany w zagadce.
-//  Notacja pól jak w algebraicznej: litera-kolumna (a–h) + cyfra-wiersz (1–8).
-//  Figury: K-król, H-hetman, W-wieża; pierwsza litera to kolor (b-biała, c-czarna).
-// ══════════════════════════════════════════════════════════════════
-const PUZZLE_SZACHOWE = [
-  {
-    figury: { a7: "bH", e6: "bK", e8: "cK" },
-    ruch: ["a7", "e7"],
-    podpowiedz: "Hetman podchodzi siódmą linią tuż pod króla — osłania go twój własny król.",
-  },
-  {
-    figury: { b1: "bH", c7: "bK", a8: "cK" },
-    ruch: ["b1", "b8"],
-    podpowiedz: "Ustaw hetmana na tej samej kolumnie co czarny król, przy samym brzegu planszy.",
-  },
-  {
-    figury: { a1: "bW", g6: "bK", h8: "cK" },
-    ruch: ["a1", "a8"],
-    podpowiedz: "Wieża może dać szacha wzdłuż całej ostatniej linii — nic jej tam nie zasłania.",
-  },
-  {
-    figury: { h8: "bW", b3: "bK", a1: "cK" },
-    ruch: ["h8", "h1"],
-    podpowiedz: "Wieża szachuje wzdłuż dolnej linii, a twój król pilnuje ucieczki obok.",
-  },
-  {
-    figury: { b8: "bH", f2: "bK", h1: "cK" },
-    ruch: ["b8", "h8"],
-    podpowiedz: "Hetman dojeżdża na sam skraj planszy i obejmuje całą kolumnę h.",
-  },
-];
-const GLIFY = { K: "♚", H: "♛", W: "♜" };
-const elSz = {
-  box: document.getElementById("szachy"),
-  plansza: document.getElementById("szachownica"),
-  info: document.getElementById("szachy-info"),
-  podpowiedz: document.getElementById("szachy-podpowiedz"),
-};
-let szachy = { puzzle: null, wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
-let ostatniaZagadka = -1;
-
-function losujZagadke() {
-  if (PUZZLE_SZACHOWE.length === 1) return 0;
-  let i;
-  do { i = Math.floor(Math.random() * PUZZLE_SZACHOWE.length); } while (i === ostatniaZagadka);
-  ostatniaZagadka = i;
-  return i;
-}
-
-function rysujSzachownice() {
-  elSz.plansza.innerHTML = "";
-  for (let wiersz = 0; wiersz < 8; wiersz++) {
-    for (let kol = 0; kol < 8; kol++) {
-      const pole = String.fromCharCode(97 + kol) + (8 - wiersz);
-      const div = document.createElement("div");
-      div.className = "pole-szach " + ((kol + wiersz) % 2 === 0 ? "jasne" : "ciemne");
-      if (pole === szachy.wybrane) div.classList.add("wybrane");
-      div.dataset.pole = pole;
-      const figura = szachy.puzzle.figury[pole];
-      if (figura) {
-        const span = document.createElement("span");
-        span.className = figura[0] === "b" ? "figura-biala" : "figura-czarna";
-        span.textContent = GLIFY[figura[1]];
-        div.appendChild(span);
-      }
-      elSz.plansza.appendChild(div);
-    }
-  }
-}
-
-function pokazPodpowiedzSzachowa() {
-  szachy.podpowiedzUzyta = true;
-  elSz.podpowiedz.disabled = true;
-  elSz.info.textContent = "Podpowiedź: " + szachy.puzzle.podpowiedz;
-}
-elSz.podpowiedz.addEventListener("click", pokazPodpowiedzSzachowa);
-
-elSz.plansza.addEventListener("click", (e) => {
-  const div = e.target.closest(".pole-szach");
-  if (!div || tryb !== "szachy" || szachy.rozwiazane) return;
-  const pole = div.dataset.pole;
-  const figura = szachy.puzzle.figury[pole];
-  const swojaFigura = figura && figura[0] === "b";
-
-  if (szachy.wybrane === null) {
-    if (swojaFigura) { szachy.wybrane = pole; rysujSzachownice(); }
-    return;
-  }
-  if (pole === szachy.wybrane) { szachy.wybrane = null; rysujSzachownice(); return; }
-  if (swojaFigura) { szachy.wybrane = pole; rysujSzachownice(); return; }
-
-  const [od, doP] = szachy.puzzle.ruch;
-  if (szachy.wybrane === od && pole === doP) {
-    rozwiazanoSzachy();
-    return;
-  }
-  szachy.blad++;
-  elSz.info.textContent = "Spróbuj jeszcze raz.";
-  pisk(200, 0.18, 0.09, "triangle");
-  // Pierwsza pomyłka od razu odsłania podpowiedź — to ta „druga szansa"
-  // ma być łatwa do wygrania, nie kolejna zagadka do rozwiązania w ciemno.
-  if (szachy.blad >= 1 && !szachy.podpowiedzUzyta) pokazPodpowiedzSzachowa();
-  szachy.wybrane = null;
-  rysujSzachownice();
-});
-
-function zacznijSzachy() {
-  tryb = "szachy";
-  szachy = { puzzle: PUZZLE_SZACHOWE[losujZagadke()], wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
-  elSz.info.textContent = "Twój ruch.";
-  elSz.podpowiedz.disabled = false;
-  elSz.box.classList.add("widoczna");
-  rysujSzachownice();
-}
-
-function rozwiazanoSzachy() {
-  szachy.rozwiazane = true;
-  const bonus = szachy.podpowiedzUzyta ? 1 : 3;
-  zycia += bonus;
-  elSz.info.textContent = szachy.podpowiedzUzyta
-    ? "Mat! +1 życie dzięki podpowiedzi."
-    : "Mat! +3 życia za samodzielne rozwiązanie.";
-  pisk(880, 0.25, 0.1);
-  odswiez();
-  setTimeout(() => {
-    elSz.box.classList.remove("widoczna");
-    ustawPostacie();
-    tryb = "gra";
-  }, 1600);
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  Quiz matematyczny — wejściówka do gry, poziom 7–8 lat
 //  (dodawanie i odejmowanie do 20, brakujący składnik, tabliczka 2/3/5, połowa).
 // ══════════════════════════════════════════════════════════════════
@@ -1358,13 +1271,18 @@ let quiz = { lista: [], nr: 0, bonus: 0, bezbledne: 0, pierwsza: true, blokada: 
 const los = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
 function ulozZadanie() {
-  let tresc, ile;
+  let tresc, ile, podpowiedz;
   switch (los(1, 5)) {
-    case 1: { const a = los(2, 12), b = los(2, 20 - a); tresc = `${a} + ${b}`; ile = a + b; break; }
-    case 2: { const a = los(8, 20), b = los(2, a - 2); tresc = `${a} − ${b}`; ile = a - b; break; }
-    case 3: { const c = los(10, 20), a = los(2, c - 2); tresc = `${a} + ? = ${c}`; ile = c - a; break; }
-    case 4: { const a = [2, 3, 5][los(0, 2)], b = los(2, 6); tresc = `${a} × ${b}`; ile = a * b; break; }
-    default: { const b = los(3, 9); tresc = `połowa z ${2 * b}`; ile = b; }
+    case 1: { const a = los(2, 12), b = los(2, 20 - a); tresc = `${a} + ${b}`; ile = a + b;
+      podpowiedz = "Rozbij na dziesiątki i jedności, potem dodaj osobno."; break; }
+    case 2: { const a = los(8, 20), b = los(2, a - 2); tresc = `${a} − ${b}`; ile = a - b;
+      podpowiedz = "Odejmij najpierw pełne dziesiątki, resztę dobierz na końcu."; break; }
+    case 3: { const c = los(10, 20), a = los(2, c - 2); tresc = `${a} + ? = ${c}`; ile = c - a;
+      podpowiedz = "Policz, ile brakuje od mniejszej liczby do większej."; break; }
+    case 4: { const a = [2, 3, 5][los(0, 2)], b = los(2, 6); tresc = `${a} × ${b}`; ile = a * b;
+      podpowiedz = "To dodawanie w kółko — dodaj drugi składnik tyle razy, ile wskazuje pierwszy."; break; }
+    default: { const b = los(3, 9); tresc = `połowa z ${2 * b}`; ile = b;
+      podpowiedz = "Podziel na dwie równe grupy i policz, ile jest w jednej."; }
   }
   // Odpowiedzi błędne trzymamy blisko dobrej — zgadywanie „na oko" ma nie działać.
   const opcje = [ile];
@@ -1373,7 +1291,7 @@ function ulozZadanie() {
     if (d > 0 && !opcje.includes(d)) opcje.push(d);
   }
   for (let i = opcje.length - 1; i > 0; i--) { const j = los(0, i); [opcje[i], opcje[j]] = [opcje[j], opcje[i]]; }
-  return { tresc, ile, opcje };
+  return { tresc, ile, opcje, podpowiedz };
 }
 
 function zacznijQuiz() {
@@ -1450,6 +1368,288 @@ function koniecQuizu() {
   odswiez();
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  Ostatnia szansa — zamiast końca gry po utracie piątego życia.
+//  Cztery kategorie zagadek: matematyczna (ten sam generator co przed grą),
+//  szachowa, ogólnorozwojowa i logiczna. Zasada jednakowa dla wszystkich:
+//  pierwsza pomyłka od razu odsłania podpowiedź (to ma być łatwa do wygrania
+//  szansa, nie kolejna zagadka do rozwiązania w ciemno) i daje jeszcze jedną
+//  próbę; rozwiązanie bez pomyłki daje 3 życia, z podpowiedzią — 1. Kolejna
+//  pomyłka PO podpowiedzi kończy grę.
+//
+//  Zagadki szachowe: dwanaście ręcznie wyszukanych i programowo
+//  zweryfikowanych pozycji „białe zaczynają i dają mata w jednym ruchu" —
+//  tylko król i hetman, król i wieża, albo dwie wieże przeciwko samotnemu
+//  królowi, żeby nie trzeba było pisać ogólnego silnika szachowego:
+//  porównujemy jedynie, czy kliknięty ruch to dokładnie ten zapisany
+//  w zagadce. Notacja pól algebraiczna (a–h, 1–8); pierwsza litera figury
+//  to kolor (b-biała, c-czarna), druga to K-król, H-hetman, W-wieża.
+// ══════════════════════════════════════════════════════════════════
+const PUZZLE_SZACHOWE = [
+  { figury: { c2: "bW", f2: "bW", h1: "cK" }, ruch: ["c2", "c1"],
+    podpowiedz: "Jedna wieża już odcina królowi ucieczkę na sąsiedni rząd — druga da szacha na rzędzie króla." },
+  { figury: { c4: "bW", g2: "bW", a1: "cK" }, ruch: ["c4", "c1"],
+    podpowiedz: "Jedna wieża już odcina królowi ucieczkę na sąsiedni rząd — druga da szacha na rzędzie króla." },
+  { figury: { a4: "bW", e7: "bW", h8: "cK" }, ruch: ["a4", "a8"],
+    podpowiedz: "Jedna wieża już odcina królowi ucieczkę na sąsiedni rząd — druga da szacha na rzędzie króla." },
+  { figury: { h4: "bW", d7: "bW", a8: "cK" }, ruch: ["h4", "h8"],
+    podpowiedz: "Jedna wieża już odcina królowi ucieczkę na sąsiedni rząd — druga da szacha na rzędzie króla." },
+  { figury: { g7: "bH", f2: "bK", h1: "cK" }, ruch: ["g7", "g1"],
+    podpowiedz: "Hetman staje tuż obok króla, osłonięty przez twojego własnego króla." },
+  { figury: { g7: "bH", b6: "bK", a8: "cK" }, ruch: ["g7", "a7"],
+    podpowiedz: "Hetman staje tuż obok króla, osłonięty przez twojego własnego króla." },
+  { figury: { g4: "bH", f7: "bK", h8: "cK" }, ruch: ["g4", "g7"],
+    podpowiedz: "Hetman staje tuż obok króla, osłonięty przez twojego własnego króla." },
+  { figury: { c2: "bH", b3: "bK", a1: "cK" }, ruch: ["c2", "b2"],
+    podpowiedz: "Hetman staje tuż obok króla, osłonięty przez twojego własnego króla." },
+  { figury: { e4: "bW", g6: "bK", h8: "cK" }, ruch: ["e4", "e8"],
+    podpowiedz: "Wieża szachuje wzdłuż brzegu planszy, a twój król pilnuje pola ucieczki obok." },
+  { figury: { c6: "bW", b3: "bK", a1: "cK" }, ruch: ["c6", "c1"],
+    podpowiedz: "Wieża szachuje wzdłuż brzegu planszy, a twój król pilnuje pola ucieczki obok." },
+  { figury: { c3: "bW", b6: "bK", a8: "cK" }, ruch: ["c3", "c8"],
+    podpowiedz: "Wieża szachuje wzdłuż brzegu planszy, a twój król pilnuje pola ucieczki obok." },
+  { figury: { d2: "bW", g3: "bK", h1: "cK" }, ruch: ["d2", "d1"],
+    podpowiedz: "Wieża szachuje wzdłuż brzegu planszy, a twój król pilnuje pola ucieczki obok." },
+];
+const GLIFY = { K: "♚", H: "♛", W: "♜" };
+
+// Zagadki ogólnorozwojowe i logiczne: pytanie + cztery odpowiedzi (string,
+// żeby porównanie było jednolite z zagadkami matematycznymi) + podpowiedź.
+const ZAGADKI_OGOLNE = [
+  { tresc: "Ile dni ma tydzień?", opcje: ["5", "6", "7", "8"], poprawna: "7",
+    podpowiedz: "Policz dni od poniedziałku do niedzieli." },
+  { tresc: "Jaki kolor powstaje z połączenia niebieskiego i żółtego?",
+    opcje: ["zielony", "fioletowy", "pomarańczowy", "różowy"], poprawna: "zielony",
+    podpowiedz: "To kolor trawy i liści." },
+  { tresc: "Ile nóg ma pająk?", opcje: ["6", "8", "4", "10"], poprawna: "8",
+    podpowiedz: "Pająk to nie owad — ma więcej niż sześć nóg." },
+  { tresc: "Która pora roku jest zaraz po zimie?", opcje: ["lato", "jesień", "wiosna", "zima"], poprawna: "wiosna",
+    podpowiedz: "Wtedy topnieje śnieg i kwitną pierwsze kwiatki." },
+  { tresc: "Jak nazywa się stolica Polski?", opcje: ["Kraków", "Warszawa", "Gdańsk", "Poznań"], poprawna: "Warszawa",
+    podpowiedz: "Płynie przez nią Wisła, a mieszka tam prezydent." },
+  { tresc: "Ile miesięcy ma rok?", opcje: ["10", "11", "12", "13"], poprawna: "12",
+    podpowiedz: "Tyle samo, ile jest kartek w kalendarzu na ścianie." },
+  { tresc: "Które zwierzę mieszka w ulu?", opcje: ["mrówka", "pszczoła", "mucha", "biedronka"], poprawna: "pszczoła",
+    podpowiedz: "To ono robi miód." },
+  { tresc: "Ile palców masz na jednej dłoni?", opcje: ["4", "5", "6", "10"], poprawna: "5",
+    podpowiedz: "Policz razem z kciukiem." },
+  { tresc: "Co świeci na niebie w nocy?", opcje: ["słońce", "księżyc", "tęcza", "chmura"], poprawna: "księżyc",
+    podpowiedz: "Czasem jest w pełni okrągłe, a czasem w kształcie rogalika." },
+  { tresc: "Ile kółek ma rower?", opcje: ["1", "2", "3", "4"], poprawna: "2",
+    podpowiedz: "Jedno kółko z przodu, jedno z tyłu." },
+];
+const ZAGADKI_LOGICZNE = [
+  { tresc: "Co pasuje dalej: 2, 4, 6, 8, ?", opcje: ["9", "10", "12", "7"], poprawna: "10",
+    podpowiedz: "Każda liczba jest o 2 większa od poprzedniej." },
+  { tresc: "Które słowo nie pasuje do reszty: pies, kot, krowa, but",
+    opcje: ["pies", "kot", "krowa", "but"], poprawna: "but",
+    podpowiedz: "Trzy z nich to zwierzęta." },
+  { tresc: "Co pasuje dalej: A, B, C, ?", opcje: ["D", "E", "X", "Z"], poprawna: "D",
+    podpowiedz: "To kolejne litery alfabetu." },
+  { tresc: "Które zwierzę jest największe?", opcje: ["mrówka", "słoń", "kot", "mysz"], poprawna: "słoń",
+    podpowiedz: "To zwierzę ma trąbę i wielkie uszy." },
+  { tresc: "Co pasuje dalej: 1, 3, 5, 7, ?", opcje: ["8", "9", "10", "6"], poprawna: "9",
+    podpowiedz: "To liczby nieparzyste — rosną o 2." },
+  { tresc: "Która figura ma dokładnie trzy boki?", opcje: ["kwadrat", "trójkąt", "koło", "prostokąt"], poprawna: "trójkąt",
+    podpowiedz: "Jej nazwa mówi wprost, ile ma kątów." },
+  { tresc: "Które słowo nie pasuje do reszty: jabłko, banan, marchewka, gruszka",
+    opcje: ["jabłko", "banan", "marchewka", "gruszka"], poprawna: "marchewka",
+    podpowiedz: "Trzy z nich to owoce, jedno to warzywo." },
+  { tresc: "Co pasuje dalej: poniedziałek, wtorek, środa, ?",
+    opcje: ["czwartek", "niedziela", "styczeń", "piątek"], poprawna: "czwartek",
+    podpowiedz: "To kolejny dzień tygodnia, zaraz po środzie." },
+  { tresc: "Co pasuje dalej: 10, 20, 30, ?", opcje: ["35", "40", "45", "50"], poprawna: "40",
+    podpowiedz: "Każda liczba jest o 10 większa od poprzedniej." },
+  { tresc: "Które nie pasuje do reszty: kółko, kwadrat, trójkąt, czerwony",
+    opcje: ["kółko", "kwadrat", "trójkąt", "czerwony"], poprawna: "czerwony",
+    podpowiedz: "Trzy z nich to kształty, jedno to kolor." },
+];
+
+const KATEGORIE = ["matematyczna", "szachowa", "ogolnorozwojowa", "logiczna"];
+const NAZWY_KATEGORII = {
+  matematyczna: "Zagadka matematyczna", szachowa: "Zagadka szachowa",
+  ogolnorozwojowa: "Zagadka ogólnorozwojowa", logiczna: "Zagadka logiczna",
+};
+const elSzansa = {
+  box: document.getElementById("szansa"),
+  tytul: document.getElementById("szansa-tytul"),
+  opis: document.getElementById("szansa-opis"),
+  plansza: document.getElementById("szachownica"),
+  zadanie: document.getElementById("szansa-zadanie"),
+  odpowiedzi: document.getElementById("szansa-odpowiedzi"),
+  info: document.getElementById("szansa-info"),
+  podpowiedz: document.getElementById("szansa-podpowiedz"),
+};
+let szansa = { zagadka: null, wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
+let ostatniaKategoria = null;
+const ostatniIndeks = { szachowa: -1, ogolnorozwojowa: -1, logiczna: -1 };
+
+function losujZTablicy(tablica, kategoriaKlucz) {
+  let i;
+  do { i = Math.floor(Math.random() * tablica.length); } while (tablica.length > 1 && i === ostatniIndeks[kategoriaKlucz]);
+  ostatniIndeks[kategoriaKlucz] = i;
+  return tablica[i];
+}
+// Odpowiedzi błędne trzymamy w losowej kolejności, żeby poprawna nie stała zawsze w tym samym miejscu.
+function przetasuj(tablica) {
+  const t = tablica.slice();
+  for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; }
+  return t;
+}
+
+function losujZagadke() {
+  let kat;
+  do { kat = KATEGORIE[Math.floor(Math.random() * KATEGORIE.length)]; } while (kat === ostatniaKategoria);
+  ostatniaKategoria = kat;
+
+  if (kat === "szachowa") {
+    const z = losujZTablicy(PUZZLE_SZACHOWE, "szachowa");
+    return { typ: "szachy", kategoria: kat, figury: z.figury, ruch: z.ruch, podpowiedz: z.podpowiedz };
+  }
+  if (kat === "matematyczna") {
+    const z = ulozZadanie();
+    return { typ: "wybor", kategoria: kat, tresc: z.tresc, opcje: przetasuj(z.opcje.map(String)),
+      poprawna: String(z.ile), podpowiedz: z.podpowiedz };
+  }
+  const bank = kat === "ogolnorozwojowa" ? ZAGADKI_OGOLNE : ZAGADKI_LOGICZNE;
+  const z = losujZTablicy(bank, kat);
+  return { typ: "wybor", kategoria: kat, tresc: z.tresc, opcje: przetasuj(z.opcje),
+    poprawna: z.poprawna, podpowiedz: z.podpowiedz };
+}
+
+function rysujSzachownice() {
+  elSzansa.plansza.innerHTML = "";
+  for (let wiersz = 0; wiersz < 8; wiersz++) {
+    for (let kol = 0; kol < 8; kol++) {
+      const pole = String.fromCharCode(97 + kol) + (8 - wiersz);
+      const div = document.createElement("div");
+      div.className = "pole-szach " + ((kol + wiersz) % 2 === 0 ? "jasne" : "ciemne");
+      if (pole === szansa.wybrane) div.classList.add("wybrane");
+      div.dataset.pole = pole;
+      const figura = szansa.zagadka.figury[pole];
+      if (figura) {
+        const span = document.createElement("span");
+        span.className = figura[0] === "b" ? "figura-biala" : "figura-czarna";
+        span.textContent = GLIFY[figura[1]];
+        div.appendChild(span);
+      }
+      elSzansa.plansza.appendChild(div);
+    }
+  }
+}
+
+function pokazZagadke() {
+  const z = szansa.zagadka;
+  elSzansa.tytul.textContent = NAZWY_KATEGORII[z.kategoria];
+  elSzansa.info.textContent = z.typ === "szachy" ? "Twój ruch." : "Twoja odpowiedź.";
+  if (z.typ === "szachy") {
+    elSzansa.opis.style.display = "block";
+    elSzansa.plansza.style.display = "grid";
+    elSzansa.zadanie.style.display = "none";
+    elSzansa.odpowiedzi.style.display = "none";
+    rysujSzachownice();
+  } else {
+    elSzansa.opis.style.display = "none";
+    elSzansa.plansza.style.display = "none";
+    elSzansa.zadanie.style.display = "block";
+    elSzansa.odpowiedzi.style.display = "grid";
+    elSzansa.zadanie.textContent = z.tresc;
+    elSzansa.odpowiedzi.innerHTML = "";
+    for (const opcja of z.opcje) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = opcja;
+      b.addEventListener("click", () => odpowiedzSzansa(b, opcja));
+      elSzansa.odpowiedzi.appendChild(b);
+    }
+  }
+}
+
+function pokazPodpowiedzSzansy() {
+  szansa.podpowiedzUzyta = true;
+  elSzansa.podpowiedz.disabled = true;
+  elSzansa.info.textContent = "Podpowiedź: " + szansa.zagadka.podpowiedz;
+}
+elSzansa.podpowiedz.addEventListener("click", pokazPodpowiedzSzansy);
+
+// Błędna próba: pierwsza od razu odsłania podpowiedź i daje kolejną szansę.
+// Druga pomyłka — już PO podpowiedzi — kończy grę naprawdę.
+function blednaProbaSzansy() {
+  szansa.blad++;
+  pisk(200, 0.18, 0.09, "triangle");
+  if (!szansa.podpowiedzUzyta) {
+    pokazPodpowiedzSzansy();
+  } else {
+    zakonczGre();
+  }
+}
+
+function rozwiazanoSzanse() {
+  szansa.rozwiazane = true;
+  const bonus = szansa.podpowiedzUzyta ? 1 : 3;
+  zycia += bonus;
+  elSzansa.info.textContent = szansa.podpowiedzUzyta
+    ? "Brawo! +1 życie dzięki podpowiedzi."
+    : "Brawo! +3 życia za samodzielne rozwiązanie.";
+  pisk(880, 0.25, 0.1);
+  odswiez();
+  setTimeout(() => {
+    elSzansa.box.classList.remove("widoczna");
+    ustawPostacie();
+    tryb = "gra";
+  }, 1600);
+}
+
+elSzansa.plansza.addEventListener("click", (e) => {
+  const div = e.target.closest(".pole-szach");
+  if (!div || tryb !== "szansa" || szansa.zagadka.typ !== "szachy" || szansa.rozwiazane) return;
+  const pole = div.dataset.pole;
+  const figura = szansa.zagadka.figury[pole];
+  const swojaFigura = figura && figura[0] === "b";
+
+  if (szansa.wybrane === null) {
+    if (swojaFigura) { szansa.wybrane = pole; rysujSzachownice(); }
+    return;
+  }
+  if (pole === szansa.wybrane) { szansa.wybrane = null; rysujSzachownice(); return; }
+  if (swojaFigura) { szansa.wybrane = pole; rysujSzachownice(); return; }
+
+  const [od, doP] = szansa.zagadka.ruch;
+  if (szansa.wybrane === od && pole === doP) {
+    rozwiazanoSzanse();
+    return;
+  }
+  blednaProbaSzansy();
+  szansa.wybrane = null;
+  if (tryb === "szansa") rysujSzachownice();
+});
+
+function odpowiedzSzansa(b, opcja) {
+  if (tryb !== "szansa" || szansa.zagadka.typ !== "wybor" || szansa.rozwiazane || b.disabled) return;
+  if (opcja !== szansa.zagadka.poprawna) {
+    b.classList.add("zle");
+    b.disabled = true;
+    blednaProbaSzansy();
+    return;
+  }
+  b.classList.add("dobrze");
+  rozwiazanoSzanse();
+}
+
+function zacznijDrugaSzanse() {
+  tryb = "szansa";
+  szansa = { zagadka: losujZagadke(), wybrane: null, blad: 0, podpowiedzUzyta: false, rozwiazane: false };
+  elSzansa.podpowiedz.disabled = false;
+  elSzansa.box.classList.add("widoczna");
+  pokazZagadke();
+}
+
+function zakonczGre() {
+  tryb = "koniec";
+  elSzansa.box.classList.remove("widoczna");
+  pokaz("Pajęczyna opustoszała", `Zebrałeś <strong>${wynik}</strong> punktów na ${poziom}. planszy. Rekord: <strong>${rekord}</strong>.`, "Jeszcze raz");
+}
+
 // ——— pętla ———
 let ostatnia = 0;
 function klatka(teraz) {
@@ -1468,9 +1668,10 @@ if (location.hash === "#test") {
     return {
       x: p.x, y: p.y, kierunek: pajak.kierunek, kierunekNazwa: pajak.kierunekNazwa,
       chce: pajak.chce, zatrzymany: pajak.zatrzymany, tryb, zostalo: doZjedzenia,
-      zycia, szachyWidoczne: elSz.box.classList.contains("widoczna"),
-      puzzleRuch: szachy.puzzle ? szachy.puzzle.ruch : null,
-      puzzleIdx: szachy.puzzle ? PUZZLE_SZACHOWE.indexOf(szachy.puzzle) : -1,
+      zycia, szansaWidoczna: elSzansa.box.classList.contains("widoczna"),
+      kategoria: szansa.zagadka ? szansa.zagadka.kategoria : null,
+      ruch: szansa.zagadka && szansa.zagadka.typ === "szachy" ? szansa.zagadka.ruch : null,
+      poprawna: szansa.zagadka && szansa.zagadka.typ === "wybor" ? szansa.zagadka.poprawna : null,
     };
   };
   // Symuluje utratę życia bez czekania na osy — do testowania samej zagadki szachowej.

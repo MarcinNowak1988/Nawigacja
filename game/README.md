@@ -15,13 +15,13 @@ połowa z liczby), poziom trudności 7–8 lat. Zła odpowiedź nie kończy zada
 dziecko próbuje dalej, traci tylko bonus za trafienie za pierwszym razem.
 Komplet bez pomyłki daje dodatkowe, szóste życie na start.
 
-Gracz zaczyna z **pięcioma życiami**. Kiedy straci ostatnie, gra się nie
-kończy — zamiast tego pojawia się prosta **zagadka szachowa**: białe zaczynają
-i dają mata w jednym ruchu, wystarczy kliknąć swoją figurę, a potem pole
-docelowe. Rozwiązanie bez pomyłki daje **3 życia**; pierwsza pomyłka od razu
-odsłania podpowiedź, a rozwiązanie z podpowiedzią daje tylko **1 życie**.
-Zagadka wraca za każdym razem, gdy licznik żyć znów spadnie do zera —
-każdorazowo inna z pięciu przygotowanych pozycji.
+Gracz zaczyna z **pięcioma życiami**. Kiedy straci ostatnie, pojawia się
+**ostatnia szansa** — zagadka z losowej kategorii: matematyczna, szachowa,
+ogólnorozwojowa albo logiczna (ta sama nigdy dwa razy z rzędu). Rozwiązanie
+bez pomyłki daje **3 życia**. Pierwsza pomyłka od razu odsłania podpowiedź
+i daje jeszcze jedną próbę — rozwiązanie z podpowiedzią daje tylko **1 życie**.
+**Druga pomyłka, już po podpowiedzi, kończy grę naprawdę.** Zagadka wraca za
+każdym razem, gdy licznik żyć znów spadnie do zera.
 
 ## Zasady
 
@@ -46,6 +46,12 @@ Przycisk „Dźwięk" włącza efekty i cichą muzykę w tle — wyłączony dom
   Nici dobierane są parami z odbiciem względem pionowej osi środkowej, więc
   plansza jest symetryczna jak klasyczne plansze Pac-Mana. Promienie z gniazda
   i cała obwódka planszy są stałe — obwódka to korytarz ucieczki dookoła.
+- **Każdy poziom tka sieć na innym wzorze**, nie tylko z innym losowym
+  wypełnieniem tego samego pustego prostokąta: „Klatka" to sam szkielet
+  (obwódka i promienie z gniazda), „Pierścienie" dorzuca dwie zamknięte
+  obwódki w głębi planszy — jak koncentryczne kręgi prawdziwej pajęczyny —
+  a „Krzyż" otwiera na wylot cały środkowy rząd i kolumnę. Wzory zmieniają
+  się cyklicznie z każdym poziomem, a ich nazwa jest widoczna w nagłówku.
 - **Sterowanie jest teraz dokładne, nie przybliżone.** Na dawnej sieci kołowej
   większość nici biegła pod kątem (szprychy co 30°), więc strzałka „w górę"
   musiała zgadywać najbliższy kierunek progiem podobieństwa — i czasem nie
@@ -67,11 +73,17 @@ Przycisk „Dźwięk" włącza efekty i cichą muzykę w tle — wyłączony dom
   samymi oscylatorami Web Audio — bez pliku dźwiękowego, żeby gra została
   jednym samodzielnym plikiem HTML. Cała pętla jest planowana w AudioContext
   z wyprzedzeniem, więc nie ma słyszalnych zacięć na styku powtórzeń.
-- **Zagadki szachowe** to pięć ręcznie sprawdzonych pozycji (tylko król i hetman
-  albo wieża przeciwko samotnemu królowi), każda zweryfikowana programowo pod
-  kątem legalności ruchu i tego, że to naprawdę mat, a nie tylko szach — nie
-  same, na wyczucie. Gra nie sprawdza ogólnych zasad szachowych: porównuje
-  jedynie, czy kliknięty ruch to dokładnie ten zapisany w zagadce.
+- **Zagadki szachowe** to dwanaście pozycji (król i hetman, król i wieża albo
+  dwie wieże przeciwko samotnemu królowi) wyszukanych i zweryfikowanych
+  programowo — osobny skrypt sprawdza legalność ruchu i to, że to naprawdę
+  mat, a nie tylko szach, więc żadna nie trafiła do gry na wyczucie. Sama gra
+  nie zna ogólnych zasad szachowych: porównuje jedynie, czy kliknięty ruch to
+  dokładnie ten zapisany w zagadce.
+- **Zagadki matematyczne** to ten sam generator co przedgrowy quiz (dodawanie
+  i odejmowanie do 20, brakujący składnik, tabliczka mnożenia, połowa z liczby).
+  **Ogólnorozwojowe** i **logiczne** to dwie osobne, dziesięcioelementowe bazy
+  pytań — ciekawostki i proste zagadki na wzorce/klasyfikację — z odpowiedziami
+  losowanymi w innej kolejności za każdym razem.
 
 Poprawność generatora planszy (spójność, symetria, brak ślepych zaułków,
 wszystkie nici osiowe) i realną skuteczność sterowania zmierzono automatycznymi
